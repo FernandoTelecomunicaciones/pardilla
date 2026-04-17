@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">pardilla app</string>
+    <string name="title_activity_main">pardilla app</string>
+    <string name="package_name">com.pardilla.gestion</string>
+    <string name="custom_url_scheme">com.pardilla.gestion</string>
+</resources>
