@@ -783,8 +783,25 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
 
   useEffect(() => { setLocalRotation(rotationConfig); }, [rotationConfig]);
 
-  const handleShiftChange = (empId, newIdx) => {
-    const updated = { ...localRotation, assignments: { ...localRotation.assignments, [empId]: parseInt(newIdx) } };
+  const today = new Date();
+  const day = today.getDay();
+  const weekStart = new Date(today); weekStart.setDate(today.getDate() - ((day + 6) % 7));
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
+
+  // Calcula weeksDiff entre lunes de referencia y lunes de la semana actual
+  const getWeeksDiff = (rotation) => {
+    const ref = new Date(rotation.referenceDate);
+    const refMonday = new Date(ref);
+    refMonday.setDate(ref.getDate() - ((ref.getDay() + 6) % 7));
+    return Math.round((weekStart - refMonday) / (7 * 24 * 60 * 60 * 1000));
+  };
+
+  // El admin selecciona el turno deseado para ESTA SEMANA (desiredShiftIdx 0=A,1=B,2=C).
+  // Hay que retroceder el offset: assignment = (deseado − weeksDiff) mod 3
+  const handleShiftChange = (empId, desiredShiftIdx) => {
+    const weeksDiff = getWeeksDiff(localRotation);
+    const newAssignment = ((parseInt(desiredShiftIdx) - weeksDiff) % 3 + 3) % 3;
+    const updated = { ...localRotation, assignments: { ...localRotation.assignments, [empId]: newAssignment } };
     setLocalRotation(updated); setRotationConfig(updated);
     localStorage.setItem("pardilla_rotation", JSON.stringify(updated));
     fb().firestore().collection("config").doc("rotation").set(updated).catch(console.error);
@@ -797,11 +814,6 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
     setSaving(false);
   };
 
-  const today = new Date();
-  const day = today.getDay();
-  const weekStart = new Date(today); weekStart.setDate(today.getDate() - ((day + 6) % 7));
-  const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
-
   return (
     <div className="container">
       <h2>Planificación de Turnos</h2>
@@ -811,8 +823,9 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
         <h3>Asignación Actual - Semana del {weekStart.toLocaleDateString("es-ES", { day: "numeric", month: "numeric" })} al {weekEnd.toLocaleDateString("es-ES", { day: "numeric", month: "numeric" })}</h3>
         {[1, 2, 4].map(empId => {
           const emp = employees.find(e => e.id === empId);
-          const shiftIdx = localRotation.assignments[empId];
-          const shiftLetter = ["A","B","C"][shiftIdx];
+          // Mostrar el turno real de esta semana (igual que Mi Horario usa getCurrentShift)
+          const shiftLetter = getCurrentShift(empId, weekStart, localRotation) || "A";
+          const shiftIdx = ["A","B","C"].indexOf(shiftLetter);
           return (
             <div key={empId} className="card" style={{ marginBottom: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -982,7 +995,10 @@ function FicharScreen({ userProfile, employees }) {
     const signature = signCanvasRef.current.toDataURL("image/png");
     const now = new Date();
     const time = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-    const registro = { userId: userProfile.uid, employeeName: userProfile.name, date: selectedDate, type: pendingFicharType, time, timestamp: now.toISOString(), signature };
+    // Usar el nombre del empleado vinculado, no el nombre del usuario de auth
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
+    const registro = { userId: userProfile.uid, employeeName, date: selectedDate, type: pendingFicharType, time, timestamp: now.toISOString(), signature };
     try {
       await fb().firestore().collection("registros_horarios").add(registro);
       setRegistros(r => [...r, { id: Date.now(), ...registro }]);
@@ -1522,7 +1538,7 @@ export default function App() {
   return (
     <div>
       <div className="header">
-        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.3</span></h1>
+        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.4</span></h1>
         <div className="header-right">
           <div className="header-user"><span>{userProfile.name}</span></div>
           <button className="logout-btn" onClick={handleLogout}>🚪 Salir</button>
