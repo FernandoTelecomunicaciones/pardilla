@@ -1084,7 +1084,7 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
   );
 }
 
-function FicharScreen({ userProfile, employees }) {
+function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig }) {
   const [registros, setRegistros] = useState([]);
   const [selectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -1096,60 +1096,67 @@ function FicharScreen({ userProfile, employees }) {
   const [pendingFicharType, setPendingFicharType] = useState(null);
   const [hasSigned, setHasSigned] = useState(false);
   const [viewSignature, setViewSignature] = useState(null);
+  const [showRetroModal, setShowRetroModal] = useState(false);
+  const [retroDate, setRetroDate] = useState("");
+  const [retroTime, setRetroTime] = useState("08:00");
+  const [retroType, setRetroType] = useState("entrada");
+  const [retroAccepted, setRetroAccepted] = useState(false);
+  const [retroSigned, setRetroSigned] = useState(false);
   const signCanvasRef = useRef(null);
+  const retroCanvasRef = useRef(null);
   const isDrawingRef = useRef(false);
+  const isRetroDrawingRef = useRef(false);
   const isAdmin = userProfile.role === "admin";
 
-  const getPos = (e) => {
-    const canvas = signCanvasRef.current;
+  const TOLERANCE_MIN = 30;
+  const DAY_KEYS = ["D","L","M","X","J","V","S"];
+  const toMins = (t) => { const [h,m] = t.split(":").map(Number); return h*60+m; };
+
+  const getScheduledCandidates = (type, shiftLetter, dateStr) => {
+    if (!shiftTemplates || !shiftLetter) return [];
+    const d = new Date(dateStr + "T12:00:00");
+    const slot = shiftTemplates[shiftLetter]?.[DAY_KEYS[d.getDay()]];
+    if (!slot) return [];
+    return (type === "entrada" ? [slot.m1, slot.t1] : [slot.m2, slot.t2]).filter(Boolean);
+  };
+
+  const findClosestScheduled = (actualTime, candidates) => {
+    if (!candidates.length) return null;
+    let best = null, bestDiff = Infinity;
+    candidates.forEach(c => { const diff = Math.abs(toMins(c) - toMins(actualTime)); if (diff < bestDiff) { bestDiff = diff; best = c; } });
+    return bestDiff <= TOLERANCE_MIN ? best : null;
+  };
+
+  const getCanvasPos = (e, canvas) => {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    if (e.touches) return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    if (e.touches) return { x: (e.touches[0].clientX - rect.left) * sx, y: (e.touches[0].clientY - rect.top) * sy };
+    return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
   };
 
-  const startDrawing = (e) => {
-    e.preventDefault();
-    const ctx = signCanvasRef.current.getContext("2d");
-    const pos = getPos(e);
-    ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
-    isDrawingRef.current = true; setHasSigned(true);
-  };
-
-  const draw = (e) => {
-    e.preventDefault();
-    if (!isDrawingRef.current) return;
-    const ctx = signCanvasRef.current.getContext("2d");
-    const pos = getPos(e);
-    ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222";
-    ctx.lineTo(pos.x, pos.y); ctx.stroke();
-  };
-
+  const startDrawing = (e) => { e.preventDefault(); const ctx = signCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, signCanvasRef.current); ctx.beginPath(); ctx.moveTo(p.x, p.y); isDrawingRef.current = true; setHasSigned(true); };
+  const draw = (e) => { e.preventDefault(); if (!isDrawingRef.current) return; const ctx = signCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, signCanvasRef.current); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222"; ctx.lineTo(p.x, p.y); ctx.stroke(); };
   const stopDrawing = () => { isDrawingRef.current = false; };
+  const clearSignature = () => { signCanvasRef.current.getContext("2d").clearRect(0, 0, 300, 150); setHasSigned(false); };
 
-  const clearSignature = () => {
-    const canvas = signCanvasRef.current;
-    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    setHasSigned(false);
-  };
+  const startRetroDrawing = (e) => { e.preventDefault(); const ctx = retroCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, retroCanvasRef.current); ctx.beginPath(); ctx.moveTo(p.x, p.y); isRetroDrawingRef.current = true; setRetroSigned(true); };
+  const drawRetro = (e) => { e.preventDefault(); if (!isRetroDrawingRef.current) return; const ctx = retroCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, retroCanvasRef.current); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222"; ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const stopRetroDrawing = () => { isRetroDrawingRef.current = false; };
+  const clearRetroSignature = () => { retroCanvasRef.current.getContext("2d").clearRect(0, 0, 300, 120); setRetroSigned(false); };
 
-  const handleFichar = (type) => {
-    setPendingFicharType(type);
-    setHasSigned(false);
-    isDrawingRef.current = false;
-    setShowSignModal(true);
-  };
+  const handleFichar = (type) => { setPendingFicharType(type); setHasSigned(false); isDrawingRef.current = false; setShowSignModal(true); };
 
   const handleConfirmFichar = async () => {
     if (!hasSigned) { alert("Por favor, firma antes de fichar"); return; }
     const signature = signCanvasRef.current.toDataURL("image/png");
     const now = new Date();
     const time = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-    // Usar el nombre del empleado vinculado, no el nombre del usuario de auth
     const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
     const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
-    const registro = { userId: userProfile.uid, employeeName, date: selectedDate, type: pendingFicharType, time, timestamp: now.toISOString(), signature };
+    const shiftLetter = linkedEmp ? getCurrentShift(linkedEmp.id, selectedDate, rotationConfig) : null;
+    const candidates = getScheduledCandidates(pendingFicharType, shiftLetter, selectedDate);
+    const scheduledTime = findClosestScheduled(time, candidates);
+    const registro = { userId: userProfile.uid, employeeName, date: selectedDate, type: pendingFicharType, time, timestamp: now.toISOString(), signature, ...(scheduledTime ? { scheduledTime, withinTolerance: true } : {}) };
     try {
       await fb().firestore().collection("registros_horarios").add(registro);
       setRegistros(r => [...r, { id: Date.now(), ...registro }]);
@@ -1157,9 +1164,29 @@ function FicharScreen({ userProfile, employees }) {
     } catch (e) { alert("Error al guardar: " + e.message); }
   };
 
+  const handleOpenRetro = () => { setRetroDate(""); setRetroTime("08:00"); setRetroType("entrada"); setRetroAccepted(false); setRetroSigned(false); isRetroDrawingRef.current = false; setShowRetroModal(true); };
+
+  const handleConfirmRetro = async () => {
+    if (!retroDate) { alert("Selecciona la fecha"); return; }
+    if (!retroTime) { alert("Indica la hora del fichaje"); return; }
+    if (!retroAccepted) { alert("Debes aceptar la declaración de responsabilidad"); return; }
+    if (!retroSigned) { alert("Por favor, firma la declaración"); return; }
+    const signature = retroCanvasRef.current.toDataURL("image/png");
+    const now = new Date();
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
+    const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber olvidado registrar el fichaje de ${retroType} del día ${retroDate} a las ${retroTime}h. El olvido fue por causa propia y la empresa no tiene responsabilidad al respecto.`;
+    const registro = { userId: userProfile.uid, employeeName, date: retroDate, type: retroType, time: retroTime, timestamp: now.toISOString(), signature, retroactivo: true, declaracionResponsabilidad: true, fechaFichaje: now.toISOString(), textoDeclaracion };
+    try {
+      await fb().firestore().collection("registros_horarios").add(registro);
+      setRegistros(r => [...r, { id: Date.now(), ...registro }]);
+      setShowRetroModal(false);
+    } catch (e) { alert("Error al guardar: " + e.message); }
+  };
+
   const downloadCSV = (records) => {
-    const header = "Fecha;Empleado;Tipo;Hora;Con Firma;Timestamp\n";
-    const rows = records.map(r => `${r.date};${r.employeeName};${r.type};${r.time};${r.signature ? "Sí" : "No"};${r.timestamp}`).join("\n");
+    const header = "Fecha;Empleado;Tipo;Hora Real;Hora Turno;Dentro Tolerancia;Retroactivo;Decl. Responsabilidad;Con Firma;Timestamp\n";
+    const rows = records.map(r => `${r.date};${r.employeeName};${r.type};${r.time};${r.scheduledTime||""};${r.withinTolerance?"Sí":"No"};${r.retroactivo?"Sí":"No"};${r.declaracionResponsabilidad?"Sí":"No"};${r.signature?"Sí":"No"};${r.timestamp}`).join("\n");
     const blob = new Blob(["\ufeff" + header + rows], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `registro_horario_${selectedDate}.csv`; a.click();
@@ -1178,6 +1205,9 @@ function FicharScreen({ userProfile, employees }) {
   };
 
   const dayRegistros = registros.filter(r => r.date === selectedDate);
+  const retroMinDate = (() => { const d = new Date(); d.setDate(d.getDate()-7); return d.toISOString().split("T")[0]; })();
+  const retroMaxDate = (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().split("T")[0]; })();
+  const linkedEmpName = (() => { const e = employees.find(emp => emp.id === userProfile.linkedEmployeeId); return e ? e.name : userProfile.name; })();
 
   return (
     <div className="container">
@@ -1190,11 +1220,15 @@ function FicharScreen({ userProfile, employees }) {
           <div className="card"><label style={{ marginBottom: "12px", display: "block", fontWeight: "600" }}>Fecha (Hoy)</label><input type="date" className="input" value={selectedDate} disabled /></div>
           <button className="fichar-btn fichar-entrada" onClick={() => handleFichar("entrada")}>⬆️ Fichar Entrada</button>
           <button className="fichar-btn fichar-salida" onClick={() => handleFichar("salida")}>⬇️ Fichar Salida</button>
+          <button className="fichar-btn" style={{ background: "#FF9800", color: "white" }} onClick={handleOpenRetro}>📅 Fichar Día Anterior</button>
           <div className="card">
             <h3 style={{ marginBottom: "12px" }}>Registros del día</h3>
             {dayRegistros.length === 0 ? <p style={{ color: "#999" }}>No hay registros para esta fecha</p> : dayRegistros.map(r => (
-              <div key={r.id} className="registro-card" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <strong>{r.type === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</strong> - {r.time}
+              <div key={r.id} className="registro-card" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <strong>{r.type === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</strong>
+                <span>{r.time}</span>
+                {r.scheduledTime && <span style={{ fontSize: "11px", color: "#2E7D32", background: "#E8F5E9", padding: "2px 6px", borderRadius: "10px" }}>Turno: {r.scheduledTime}</span>}
+                {r.retroactivo && <span style={{ fontSize: "11px", color: "#E65100", background: "#FFF3E0", padding: "2px 6px", borderRadius: "10px" }}>📅 Retroactivo</span>}
                 {r.signature && <img src={r.signature} alt="firma" className="firma-img" onClick={() => setViewSignature(r.signature)} title="Ver firma" />}
               </div>
             ))}
@@ -1224,15 +1258,20 @@ function FicharScreen({ userProfile, employees }) {
                         <th style={{ padding: "8px", textAlign: "left" }}>Fecha</th>
                         <th style={{ padding: "8px", textAlign: "left" }}>Empleado</th>
                         <th style={{ padding: "8px", textAlign: "left" }}>Tipo</th>
-                        <th style={{ padding: "8px", textAlign: "left" }}>Hora</th>
+                        <th style={{ padding: "8px", textAlign: "left" }}>Hora Real</th>
+                        <th style={{ padding: "8px", textAlign: "left" }}>Hora Turno</th>
                         <th style={{ padding: "8px", textAlign: "left" }}>Firma</th>
                       </tr></thead>
                       <tbody>{adminRegistros.map((r, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #eee" }}>
-                          <td style={{ padding: "8px" }}>{r.date}</td>
+                        <tr key={idx} style={{ borderBottom: "1px solid #eee", background: r.retroactivo ? "#FFF8F0" : "white" }}>
+                          <td style={{ padding: "8px" }}>
+                            {r.date}
+                            {r.retroactivo && <span style={{ marginLeft: "4px", fontSize: "10px", color: "#E65100", background: "#FFE0B2", padding: "1px 5px", borderRadius: "8px" }}>Retro</span>}
+                          </td>
                           <td style={{ padding: "8px" }}>{r.employeeName}</td>
                           <td style={{ padding: "8px" }}>{r.type === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</td>
                           <td style={{ padding: "8px" }}>{r.time}</td>
+                          <td style={{ padding: "8px" }}>{r.scheduledTime ? <span style={{ color: "#2E7D32", fontWeight: "600" }}>{r.scheduledTime}</span> : <span style={{ color: "#bbb" }}>—</span>}</td>
                           <td style={{ padding: "8px" }}>
                             {r.signature
                               ? <img src={r.signature} alt="firma" className="firma-img" onClick={() => setViewSignature(r.signature)} title="Ver firma" />
@@ -1275,6 +1314,60 @@ function FicharScreen({ userProfile, employees }) {
               <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={clearSignature}>Limpiar</button>
               <button className="btn btn-primary btn-sm" style={{ flex: 2 }} onClick={handleConfirmFichar} disabled={!hasSigned}>
                 Confirmar {pendingFicharType === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRetroModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span>📅 Fichaje Día Anterior</span>
+              <button className="modal-close" onClick={() => setShowRetroModal(false)}>×</button>
+            </div>
+            <div className="form-group">
+              <label>Fecha del fichaje olvidado</label>
+              <input type="date" className="input" value={retroDate} min={retroMinDate} max={retroMaxDate} onChange={e => setRetroDate(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Tipo de fichaje</label>
+              <select className="input" value={retroType} onChange={e => setRetroType(e.target.value)}>
+                <option value="entrada">⬆️ Entrada</option>
+                <option value="salida">⬇️ Salida</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Hora real del fichaje</label>
+              <input type="time" className="input" value={retroTime} onChange={e => setRetroTime(e.target.value)} />
+            </div>
+            <div style={{ background: "#FFF3E0", border: "1px solid #FF9800", borderRadius: "8px", padding: "12px", marginBottom: "12px", fontSize: "12px", color: "#5D4037", lineHeight: "1.6" }}>
+              <strong>Declaración de responsabilidad:</strong><br /><br />
+              Yo, <em>{linkedEmpName}</em>, declaro bajo mi responsabilidad haber olvidado registrar el fichaje de <strong>{retroType}</strong> del día <strong>{retroDate || "..."}</strong> a las <strong>{retroTime || "..."}</strong> horas. Asumo que el olvido del fichaje fue por causa propia y que la empresa no tiene ninguna responsabilidad al respecto.
+            </div>
+            <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", marginBottom: "12px", fontSize: "13px", cursor: "pointer" }}>
+              <input type="checkbox" checked={retroAccepted} onChange={e => setRetroAccepted(e.target.checked)} style={{ marginTop: "3px", flexShrink: 0 }} />
+              Acepto la declaración anterior y firmo este documento
+            </label>
+            <p style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Firma con el dedo o el ratón:</p>
+            <canvas
+              ref={retroCanvasRef}
+              width={300}
+              height={120}
+              className="signature-canvas"
+              onMouseDown={startRetroDrawing}
+              onMouseMove={drawRetro}
+              onMouseUp={stopRetroDrawing}
+              onMouseLeave={stopRetroDrawing}
+              onTouchStart={startRetroDrawing}
+              onTouchMove={drawRetro}
+              onTouchEnd={stopRetroDrawing}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={clearRetroSignature}>Limpiar firma</button>
+              <button className="btn btn-primary btn-sm" style={{ flex: 2 }} onClick={handleConfirmRetro} disabled={!retroAccepted || !retroSigned}>
+                Registrar fichaje
               </button>
             </div>
           </div>
@@ -1690,7 +1783,7 @@ export default function App() {
   return (
     <div>
       <div className="header">
-        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.5</span></h1>
+        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.6</span></h1>
         <div className="header-right">
           <div className="header-user"><span>{userProfile.name}</span></div>
           <button className="logout-btn" onClick={handleLogout}>🚪 Salir</button>
@@ -1726,7 +1819,7 @@ export default function App() {
       {screen === "vacation" && <VacationPlanningScreen employees={employees} setEmployees={setEmployees} userProfile={userProfile} vacationAssignments={vacationAssignments} setVacationAssignments={setVacationAssignments} />}
       {screen === "assignVacations" && <AssignVacationsScreen employees={employees} vacationAssignments={vacationAssignments} setVacationAssignments={setVacationAssignments} />}
       {screen === "miHorario" && <ConsultarHorarioScreen employees={employees} userProfile={userProfile} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
-      {screen === "fichar" && <FicharScreen userProfile={userProfile} employees={employees} />}
+      {screen === "fichar" && <FicharScreen userProfile={userProfile} employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
       {screen === "shiftConfig" && <ShiftConfigScreen shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
       {screen === "users" && <UserManagementScreen userProfile={userProfile} employees={employees} />}
       {screen === "firebase" && <FirebaseConfigScreen />}
