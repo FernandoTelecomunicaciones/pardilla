@@ -512,6 +512,7 @@ function HomeScreen({ userProfile, onNavigate }) {
       { icon: "📊", label: "Gestión", screen: "management" },{ icon: "✓", label: "Tareas", screen: "tasks" },
       { icon: "🏪", label: "Turnos", screen: "schedule" },{ icon: "📅", label: "Mi Horario", screen: "miHorario" },
       { icon: "🕐", label: "Fichar", screen: "fichar" },{ icon: "🏖️", label: "Vacaciones", screen: "vacation" },
+      { icon: "📋", label: "Asignar Vacaciones", screen: "assignVacations" },
       { icon: "⚙️", label: "Config Turnos", screen: "shiftConfig" },{ icon: "👤", label: "Usuarios", screen: "users" },
       { icon: "🔧", label: "Firebase", screen: "firebase" },
     ];
@@ -845,34 +846,184 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
   );
 }
 
-function VacationPlanningScreen({ employees, setEmployees, userProfile }) {
+function SignatureCanvas({ assignmentDetails, onSave, onCancel }) {
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const lastPos = useRef(null);
+  const getPos = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if (e.touches) return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+  const startDraw = (e) => { e.preventDefault(); setIsDrawing(true); lastPos.current = getPos(e); };
+  const draw = (e) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const ctx = canvasRef.current.getContext("2d");
+    const pos = getPos(e);
+    ctx.beginPath(); ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y); ctx.strokeStyle = "#333"; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.stroke();
+    lastPos.current = pos;
+  };
+  const stopDraw = (e) => { if (e) e.preventDefault(); setIsDrawing(false); lastPos.current = null; };
+  const clear = () => { const c = canvasRef.current; c.getContext("2d").clearRect(0, 0, c.width, c.height); };
+  const a = assignmentDetails;
+  return (
+    <div className="modal"><div className="modal-content">
+      <div className="modal-header"><span>Firmar Vacaciones</span><button className="modal-close" onClick={onCancel}>×</button></div>
+      <div style={{ background: "#FFF3E0", border: "1px solid #FF9800", borderRadius: "8px", padding: "12px", marginBottom: "16px" }}>
+        {a.startDate && a.endDate && <p><strong>Período:</strong> {a.startDate} al {a.endDate}</p>}
+        <p><strong>Días:</strong> {a.days}</p>
+        {a.note && <p><strong>Nota:</strong> {a.note}</p>}
+      </div>
+      <p style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>Firma con el dedo en el recuadro:</p>
+      <canvas ref={canvasRef} width={400} height={150}
+        style={{ border: "2px solid #DDD", borderRadius: "8px", width: "100%", touchAction: "none", background: "white", display: "block" }}
+        onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
+        onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={stopDraw}
+      />
+      <div style={{ marginTop: "8px" }}><button className="btn btn-secondary btn-sm" onClick={clear}>Borrar firma</button></div>
+      <div className="modal-footer">
+        <button className="btn btn-secondary btn-sm" onClick={onCancel}>Cancelar</button>
+        <button className="btn btn-success btn-sm" onClick={() => onSave(canvasRef.current.toDataURL())}>Confirmar Firma</button>
+      </div>
+    </div></div>
+  );
+}
+
+function AssignVacationsScreen({ employees, vacationAssignments, setVacationAssignments }) {
+  const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || null);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [customDays, setCustomDays] = useState("");
+  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState(false);
+  const calcDays = () => {
+    if (startDate && endDate) {
+      const diff = Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1;
+      if (diff > 0) return diff;
+    }
+    return parseInt(customDays) || 0;
+  };
+  const days = calcDays();
+  const handleAssign = () => {
+    if (!selectedEmpId || days <= 0) return;
+    const newA = { id: Date.now(), employeeId: selectedEmpId, startDate: startDate || null, endDate: endDate || null, days, note, status: "pending", signatureData: null, signedAt: null, assignedAt: new Date().toISOString() };
+    const updated = [...vacationAssignments, newA];
+    setVacationAssignments(updated); localStorage.setItem("pardilla_vacation_assignments", JSON.stringify(updated));
+    setSaved(true); setTimeout(() => setSaved(false), 3000);
+    setStartDate(""); setEndDate(""); setCustomDays(""); setNote("");
+  };
+  const handleDelete = (id) => {
+    const updated = vacationAssignments.filter(a => a.id !== id);
+    setVacationAssignments(updated); localStorage.setItem("pardilla_vacation_assignments", JSON.stringify(updated));
+  };
+  return (
+    <div className="container">
+      <h2>Asignar Vacaciones</h2>
+      <div className="card" style={{ marginTop: "16px" }}>
+        <h4 style={{ marginBottom: "16px" }}>Nueva Asignación</h4>
+        <div className="form-group"><label>Empleado</label>
+          <select className="input" value={selectedEmpId || ""} onChange={e => setSelectedEmpId(parseInt(e.target.value))}>
+            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </div>
+        <div className="form-group"><label>Fecha inicio (opcional)</label><input type="date" className="input" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+        <div className="form-group"><label>Fecha fin (opcional)</label><input type="date" className="input" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} /></div>
+        {(!startDate || !endDate) && <div className="form-group"><label>Número de días</label><input type="number" className="input" value={customDays} onChange={e => setCustomDays(e.target.value)} min="1" placeholder="Días de vacaciones" /></div>}
+        {days > 0 && <div style={{ background: "#E8F5E9", padding: "12px", borderRadius: "8px", marginBottom: "16px", fontWeight: "600", color: "#2E7D32" }}>Días a asignar: {days}</div>}
+        <div className="form-group"><label>Nota (opcional)</label><input type="text" className="input" value={note} onChange={e => setNote(e.target.value)} placeholder="Ej: Vacaciones verano" /></div>
+        {saved && <div style={{ color: "#2E7D32", fontWeight: "600", marginBottom: "12px" }}>✓ Asignación creada — pendiente de firma del empleado</div>}
+        <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleAssign} disabled={!selectedEmpId || days <= 0}>Asignar Vacaciones (Pendiente de firma)</button>
+      </div>
+      <div className="card" style={{ marginTop: "16px" }}>
+        <h4 style={{ marginBottom: "16px" }}>Asignaciones realizadas</h4>
+        {vacationAssignments.length === 0 && <p style={{ color: "#999" }}>No hay asignaciones</p>}
+        {[...vacationAssignments].reverse().map(a => {
+          const emp = employees.find(e => e.id === a.employeeId);
+          return (
+            <div key={a.id} style={{ background: a.status === "signed" ? "#E8F5E9" : "#FFF3E0", border: `1px solid ${a.status === "signed" ? "#4CAF50" : "#FF9800"}`, borderRadius: "8px", padding: "12px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div style={{ fontWeight: "600" }}>{emp?.name || "Desconocido"}</div>
+                <div style={{ fontSize: "13px", color: "#666" }}>{a.startDate && a.endDate ? `${a.startDate} al ${a.endDate} · ` : ""}{a.days} días{a.note ? ` · ${a.note}` : ""}</div>
+                <div style={{ marginTop: "4px" }}>
+                  <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "600", background: a.status === "signed" ? "#4CAF50" : "#FF9800", color: "white" }}>{a.status === "signed" ? "Firmada" : "Pendiente de firma"}</span>
+                  {a.signedAt && <span style={{ fontSize: "12px", color: "#666", marginLeft: "8px" }}>Firmada: {new Date(a.signedAt).toLocaleDateString("es-ES")}</span>}
+                </div>
+              </div>
+              {a.status === "pending" && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(a.id)}>×</button>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function VacationPlanningScreen({ employees, setEmployees, userProfile, vacationAssignments, setVacationAssignments }) {
+  const [signingAssignment, setSigningAssignment] = useState(null);
   const visible = userProfile.role === "empleado" ? employees.filter(e => e.id === userProfile.linkedEmployeeId) : employees;
   const canModify = userProfile.role === "admin";
   const updateVacation = (empId, delta) => {
-    const updated = employees.map(e => e.id === empId ? {...e, vacationDays: Math.max(0, e.vacationDays + delta)} : e);
+    const updated = employees.map(e => e.id === empId ? {...e, vacationDays: e.vacationDays + delta} : e);
     setEmployees(updated); localStorage.setItem("pardilla_employees", JSON.stringify(updated));
+  };
+  const pendingAssignments = (userProfile.role === "empleado" && userProfile.linkedEmployeeId)
+    ? vacationAssignments.filter(a => a.employeeId === userProfile.linkedEmployeeId && a.status === "pending")
+    : [];
+  const handleSign = (signatureData) => {
+    const a = signingAssignment;
+    const updatedA = vacationAssignments.map(x => x.id === a.id ? { ...x, status: "signed", signatureData, signedAt: new Date().toISOString() } : x);
+    setVacationAssignments(updatedA); localStorage.setItem("pardilla_vacation_assignments", JSON.stringify(updatedA));
+    const updatedE = employees.map(e => e.id === a.employeeId ? { ...e, vacationDays: e.vacationDays - a.days } : e);
+    setEmployees(updatedE); localStorage.setItem("pardilla_employees", JSON.stringify(updatedE));
+    setSigningAssignment(null);
   };
   if (userProfile.role === "empleado" && !userProfile.linkedEmployeeId) return <div className="container"><h2>Mis Vacaciones</h2><div className="card" style={{ marginTop: "16px", background: "#FFF3E0", border: "2px solid #FF9800" }}><p style={{ color: "#E65100" }}>No tienes un empleado asignado. Contacta con tu administrador.</p></div></div>;
   return (
     <div className="container">
       <h2>{userProfile.role === "empleado" ? "Mis Vacaciones" : "Planificación de Vacaciones"}</h2>
+      {pendingAssignments.length > 0 && (
+        <div className="card" style={{ marginTop: "16px", background: "#FFF3E0", border: "2px solid #FF9800" }}>
+          <h4 style={{ color: "#E65100", marginBottom: "12px" }}>Vacaciones pendientes de firma</h4>
+          {pendingAssignments.map(a => (
+            <div key={a.id} style={{ marginBottom: "12px" }}>
+              <p>{a.startDate && a.endDate ? `Del ${a.startDate} al ${a.endDate}: ` : ""}<strong>{a.days} días</strong>{a.note ? ` (${a.note})` : ""}</p>
+              <button className="btn btn-primary btn-sm" style={{ marginTop: "8px" }} onClick={() => setSigningAssignment(a)}>Firmar</button>
+            </div>
+          ))}
+        </div>
+      )}
       {visible.map(emp => {
         const total = emp.monthsWorked * 2.5 + emp.workedHolidays + emp.vacationDays;
+        const signed = vacationAssignments.filter(a => a.employeeId === emp.id && a.status === "signed");
         return (
-          <div key={emp.id} className="card">
+          <div key={emp.id} className="card" style={{ marginTop: "16px" }}>
             <h4>{emp.name}</h4>
             <div className="stat-grid" style={{ marginTop: "12px" }}>
-              <div className="stat-box"><div className="label">Días Totales</div><div className="value">{total.toFixed(1)}</div></div>
-              <div className="stat-box"><div className="label">Usados</div><div className="value">{emp.vacationDays}</div></div>
+              <div className="stat-box"><div className="label">Días disponibles</div><div className="value" style={{ color: total < 0 ? "#F44336" : "var(--primary)" }}>{total.toFixed(1)}</div></div>
+              <div className="stat-box"><div className="label">Ajuste admin</div><div className="value" style={{ color: emp.vacationDays < 0 ? "#F44336" : "var(--primary)" }}>{emp.vacationDays}</div></div>
             </div>
             <div className="vacation-control">
               {canModify && <button className="vacation-btn" onClick={() => updateVacation(emp.id, -1)}>−</button>}
-              <div className="vacation-value">{emp.vacationDays}</div>
+              <div className="vacation-value" style={{ color: total < 0 ? "#F44336" : "var(--primary)" }}>{total.toFixed(1)}</div>
               {canModify && <button className="vacation-btn" onClick={() => updateVacation(emp.id, 1)}>+</button>}
             </div>
+            {signed.length > 0 && (
+              <div style={{ marginTop: "12px", borderTop: "1px solid #EEE", paddingTop: "12px" }}>
+                <p style={{ fontSize: "13px", fontWeight: "600", marginBottom: "8px", color: "#666" }}>Vacaciones firmadas:</p>
+                {signed.map(a => (
+                  <div key={a.id} style={{ fontSize: "13px", color: "#555", marginBottom: "4px" }}>• {a.startDate && a.endDate ? `${a.startDate} al ${a.endDate}: ` : ""}{a.days} días{a.note ? ` (${a.note})` : ""}</div>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
+      {signingAssignment && <SignatureCanvas assignmentDetails={signingAssignment} onSave={handleSign} onCancel={() => setSigningAssignment(null)} />}
     </div>
   );
 }
@@ -1317,7 +1468,7 @@ function EmployeeDetailModal({ employee, onClose, setEmployees, employees }) {
       <div className="form-group"><label>Rol</label><select className="input" value={editRole} onChange={e => setEditRole(e.target.value)}>{ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
       <div className="form-group"><label>Días de Vacación</label>
         <div className="vacation-control">
-          <button className="vacation-btn" onClick={() => setEditVacationDays(Math.max(0, editVacationDays - 1))}>−</button>
+          <button className="vacation-btn" onClick={() => setEditVacationDays(editVacationDays - 1)}>−</button>
           <div className="vacation-value">{editVacationDays}</div>
           <button className="vacation-btn" onClick={() => setEditVacationDays(editVacationDays + 1)}>+</button>
         </div>
@@ -1435,6 +1586,7 @@ export default function App() {
   const [products, setProducts] = useState(() => { const s = localStorage.getItem("pardilla_products"); return s ? JSON.parse(s) : PRODUCTS_INIT; });
   const [shiftTemplates] = useState(SHIFT_TEMPLATES_DEFAULT);
   const [rotationConfig, setRotationConfig] = useState(() => { const s = localStorage.getItem("pardilla_rotation"); return s ? JSON.parse(s) : ROTATION_DEFAULT; });
+  const [vacationAssignments, setVacationAssignments] = useState(() => { const s = localStorage.getItem("pardilla_vacation_assignments"); return s ? JSON.parse(s) : []; });
   const [screen, setScreen] = useState("home");
   const [modalOpen, setModalOpen] = useState(null);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -1538,7 +1690,7 @@ export default function App() {
   return (
     <div>
       <div className="header">
-        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.4</span></h1>
+        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.5</span></h1>
         <div className="header-right">
           <div className="header-user"><span>{userProfile.name}</span></div>
           <button className="logout-btn" onClick={handleLogout}>🚪 Salir</button>
@@ -1557,6 +1709,7 @@ export default function App() {
         <button className={`nav-tab ${screen === "miHorario" ? "active" : ""}`} onClick={() => setScreen("miHorario")}>Mi Horario</button>
         <button className={`nav-tab ${screen === "fichar" ? "active" : ""}`} onClick={() => setScreen("fichar")}>Fichar</button>
         <button className={`nav-tab ${screen === "vacation" ? "active" : ""}`} onClick={() => setScreen("vacation")}>Vacaciones</button>
+        {userProfile.role === "admin" && <button className={`nav-tab ${screen === "assignVacations" ? "active" : ""}`} onClick={() => setScreen("assignVacations")}>Asignar Vacaciones</button>}
         {userProfile.role === "admin" && <>
           <button className={`nav-tab ${screen === "shiftConfig" ? "active" : ""}`} onClick={() => setScreen("shiftConfig")}>Config Turnos</button>
           <button className={`nav-tab ${screen === "users" ? "active" : ""}`} onClick={() => setScreen("users")}>Usuarios</button>
@@ -1570,7 +1723,8 @@ export default function App() {
       {screen === "management" && <ManagementScreen />}
       {screen === "tasks" && <TasksScreen onOpenModal={setModalOpen} />}
       {screen === "schedule" && <ShiftPlanningScreen employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} setRotationConfig={setRotationConfig} />}
-      {screen === "vacation" && <VacationPlanningScreen employees={employees} setEmployees={setEmployees} userProfile={userProfile} />}
+      {screen === "vacation" && <VacationPlanningScreen employees={employees} setEmployees={setEmployees} userProfile={userProfile} vacationAssignments={vacationAssignments} setVacationAssignments={setVacationAssignments} />}
+      {screen === "assignVacations" && <AssignVacationsScreen employees={employees} vacationAssignments={vacationAssignments} setVacationAssignments={setVacationAssignments} />}
       {screen === "miHorario" && <ConsultarHorarioScreen employees={employees} userProfile={userProfile} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
       {screen === "fichar" && <FicharScreen userProfile={userProfile} employees={employees} />}
       {screen === "shiftConfig" && <ShiftConfigScreen shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
