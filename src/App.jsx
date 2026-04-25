@@ -775,6 +775,11 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
   const [localRotation, setLocalRotation] = useState(rotationConfig);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showReplaceModal, setShowReplaceModal] = useState(false);
+  const [replaceSlotId, setReplaceSlotId] = useState(null);
+  const [newEmpId, setNewEmpId] = useState("");
+  const [addEmpId, setAddEmpId] = useState("");
+  const [addShiftIdx, setAddShiftIdx] = useState("0");
 
   useEffect(() => {
     fb().firestore().collection("config").doc("rotation").get()
@@ -815,6 +820,39 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
     setSaving(false);
   };
 
+  const persistRotation = (updated) => {
+    setLocalRotation(updated); setRotationConfig(updated);
+    localStorage.setItem("pardilla_rotation", JSON.stringify(updated));
+    fb().firestore().collection("config").doc("rotation").set(updated).catch(console.error);
+  };
+
+  const handleRemoveFromRotation = (empId) => {
+    const emp = employees.find(e => e.id === empId);
+    if (!window.confirm(`¿Quitar a ${emp?.name} de la rotación A/B/C?`)) return;
+    const newAssignments = { ...localRotation.assignments };
+    delete newAssignments[empId];
+    persistRotation({ ...localRotation, assignments: newAssignments });
+  };
+
+  const handleReplaceEmployee = () => {
+    if (!newEmpId) return;
+    const oldBaseIdx = localRotation.assignments[replaceSlotId];
+    const newAssignments = { ...localRotation.assignments };
+    delete newAssignments[replaceSlotId];
+    newAssignments[parseInt(newEmpId)] = oldBaseIdx;
+    persistRotation({ ...localRotation, assignments: newAssignments });
+    setShowReplaceModal(false); setNewEmpId("");
+  };
+
+  const handleAddToRotation = () => {
+    if (!addEmpId) return;
+    const weeksDiff = getWeeksDiff(localRotation);
+    const newBaseIdx = ((parseInt(addShiftIdx) - weeksDiff) % 3 + 3) % 3;
+    const newAssignments = { ...localRotation.assignments, [parseInt(addEmpId)]: newBaseIdx };
+    persistRotation({ ...localRotation, assignments: newAssignments });
+    setAddEmpId(""); setAddShiftIdx("0");
+  };
+
   return (
     <div className="container">
       <h2>Planificación de Turnos</h2>
@@ -822,15 +860,14 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
       {saved && <div className="success-message">Cambios guardados correctamente</div>}
       <div style={{ marginTop: "20px" }}>
         <h3>Asignación Actual - Semana del {weekStart.toLocaleDateString("es-ES", { day: "numeric", month: "numeric" })} al {weekEnd.toLocaleDateString("es-ES", { day: "numeric", month: "numeric" })}</h3>
-        {[1, 2, 4].map(empId => {
+        {Object.keys(localRotation.assignments).map(Number).map(empId => {
           const emp = employees.find(e => e.id === empId);
-          // Mostrar el turno real de esta semana (igual que Mi Horario usa getCurrentShift)
           const shiftLetter = getCurrentShift(empId, weekStart, localRotation) || "A";
           const shiftIdx = ["A","B","C"].indexOf(shiftLetter);
           return (
             <div key={empId} className="card" style={{ marginBottom: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h4>{emp?.name}</h4>
+                <h4>{emp?.name || "Empleado #"+empId}</h4>
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                   <select className="input" value={shiftIdx} onChange={e => handleShiftChange(empId, e.target.value)} style={{ width: "100px", marginBottom: "0" }}>
                     <option value="0">Turno A</option><option value="1">Turno B</option><option value="2">Turno C</option>
@@ -842,6 +879,80 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
           );
         })}
       </div>
+
+      <div style={{ marginTop: "28px" }}>
+        <h3 style={{ marginBottom: "8px" }}>Gestión de Empleados en Rotación</h3>
+        <p style={{ fontSize: "12px", color: "#666", marginBottom: "12px" }}>Empleados que rotan semanalmente entre los turnos A, B y C (dependientes y ayudantes).</p>
+        {Object.keys(localRotation.assignments).map(Number).map(empId => {
+          const emp = employees.find(e => e.id === empId);
+          const shiftLetter = getCurrentShift(empId, weekStart, localRotation) || "A";
+          return (
+            <div key={empId} className="card" style={{ marginBottom: "8px", borderLeft: "4px solid var(--info)", padding: "12px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontWeight: "600" }}>{emp?.name || "Empleado #"+empId}</span>
+                  <span style={{ fontSize: "12px", color: "#666" }}>{emp?.role || ""}</span>
+                  <div className={`turno-badge turno-${shiftLetter}`} style={{ fontSize: "13px", padding: "3px 10px" }}>{shiftLetter}</div>
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setReplaceSlotId(empId); setNewEmpId(""); setShowReplaceModal(true); }}>Reemplazar</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleRemoveFromRotation(empId)}>Quitar</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        <div className="card" style={{ marginTop: "16px", borderLeft: "4px solid var(--success)" }}>
+          <h4 style={{ marginBottom: "12px" }}>Añadir empleado a rotación</h4>
+          <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: "140px" }}>
+              <label style={{ display: "block", fontSize: "12px", marginBottom: "4px" }}>Empleado</label>
+              <select className="input" value={addEmpId} onChange={e => setAddEmpId(e.target.value)} style={{ marginBottom: 0 }}>
+                <option value="">Seleccionar...</option>
+                {employees.filter(e => e.shiftType === "store" && localRotation.assignments[e.id] === undefined).map(e => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ width: "140px" }}>
+              <label style={{ display: "block", fontSize: "12px", marginBottom: "4px" }}>Turno esta semana</label>
+              <select className="input" value={addShiftIdx} onChange={e => setAddShiftIdx(e.target.value)} style={{ marginBottom: 0 }}>
+                <option value="0">Turno A</option>
+                <option value="1">Turno B</option>
+                <option value="2">Turno C</option>
+              </select>
+            </div>
+            <button className="btn btn-success btn-sm" onClick={handleAddToRotation} disabled={!addEmpId} style={{ height: "44px" }}>Añadir</button>
+          </div>
+        </div>
+      </div>
+
+      {showReplaceModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span>Reemplazar empleado en rotación</span>
+              <button className="modal-close" onClick={() => setShowReplaceModal(false)}>×</button>
+            </div>
+            <p style={{ fontSize: "13px", marginBottom: "8px" }}>Reemplazando a: <strong>{employees.find(e => e.id === replaceSlotId)?.name}</strong></p>
+            <p style={{ fontSize: "12px", color: "#666", marginBottom: "16px" }}>El nuevo empleado continuará la rotación desde el mismo turno. Sus vacaciones y datos son independientes.</p>
+            <div className="form-group">
+              <label>Nuevo empleado</label>
+              <select className="input" value={newEmpId} onChange={e => setNewEmpId(e.target.value)}>
+                <option value="">Seleccionar...</option>
+                {employees.filter(e => e.shiftType === "store" && localRotation.assignments[e.id] === undefined).map(e => (
+                  <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => setShowReplaceModal(false)}>Cancelar</button>
+              <button className="btn btn-primary btn-sm" style={{ flex: 2 }} onClick={handleReplaceEmployee} disabled={!newEmpId}>Confirmar reemplazo</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1102,10 +1213,16 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig }
   const [retroType, setRetroType] = useState("entrada");
   const [retroAccepted, setRetroAccepted] = useState(false);
   const [retroSigned, setRetroSigned] = useState(false);
+  const [showFueraTurnoModal, setShowFueraTurnoModal] = useState(false);
+  const [fueraTurnoAccepted, setFueraTurnoAccepted] = useState(false);
+  const [fueraTurnoSigned, setFueraTurnoSigned] = useState(false);
+  const [fueraTurnoInfo, setFueraTurnoInfo] = useState({ currentTime: "", shiftLetter: "-", horarioPrevisto: "" });
   const signCanvasRef = useRef(null);
   const retroCanvasRef = useRef(null);
+  const fueraTurnoCanvasRef = useRef(null);
   const isDrawingRef = useRef(false);
   const isRetroDrawingRef = useRef(false);
+  const isFueraTurnoDrawingRef = useRef(false);
   const isAdmin = userProfile.role === "admin";
 
   const TOLERANCE_MIN = 30;
@@ -1144,7 +1261,35 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig }
   const stopRetroDrawing = () => { isRetroDrawingRef.current = false; };
   const clearRetroSignature = () => { retroCanvasRef.current.getContext("2d").clearRect(0, 0, 300, 120); setRetroSigned(false); };
 
-  const handleFichar = (type) => { setPendingFicharType(type); setHasSigned(false); isDrawingRef.current = false; setShowSignModal(true); };
+  const startFueraTurnoDrawing = (e) => { e.preventDefault(); const ctx = fueraTurnoCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, fueraTurnoCanvasRef.current); ctx.beginPath(); ctx.moveTo(p.x, p.y); isFueraTurnoDrawingRef.current = true; setFueraTurnoSigned(true); };
+  const drawFueraTurno = (e) => { e.preventDefault(); if (!isFueraTurnoDrawingRef.current) return; const ctx = fueraTurnoCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, fueraTurnoCanvasRef.current); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222"; ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const stopFueraTurnoDrawing = () => { isFueraTurnoDrawingRef.current = false; };
+  const clearFueraTurnoSignature = () => { fueraTurnoCanvasRef.current.getContext("2d").clearRect(0, 0, 300, 120); setFueraTurnoSigned(false); };
+
+  const handleFichar = (type) => {
+    const now = new Date();
+    const time = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const isInRotation = linkedEmp && rotationConfig?.assignments?.[linkedEmp.id] !== undefined;
+    setPendingFicharType(type);
+    if (isInRotation) {
+      const shiftLetter = getCurrentShift(linkedEmp.id, selectedDate, rotationConfig);
+      const candidates = getScheduledCandidates(type, shiftLetter, selectedDate);
+      const scheduledTime = findClosestScheduled(time, candidates);
+      if (!scheduledTime) {
+        const d = new Date(selectedDate + "T12:00:00");
+        const slot = shiftLetter ? shiftTemplates?.[shiftLetter]?.[DAY_KEYS[d.getDay()]] : null;
+        const entradas = slot ? [slot.m1, slot.t1].filter(Boolean) : [];
+        const salidas = slot ? [slot.m2, slot.t2].filter(Boolean) : [];
+        const horarioPrevisto = slot ? `Entrada: ${entradas.join(" / ")} · Salida: ${salidas.join(" / ")}` : "Día libre según tu turno";
+        setFueraTurnoInfo({ currentTime: time, shiftLetter: shiftLetter || "-", horarioPrevisto });
+        setFueraTurnoAccepted(false); setFueraTurnoSigned(false); isFueraTurnoDrawingRef.current = false;
+        setShowFueraTurnoModal(true);
+        return;
+      }
+    }
+    setHasSigned(false); isDrawingRef.current = false; setShowSignModal(true);
+  };
 
   const handleConfirmFichar = async () => {
     if (!hasSigned) { alert("Por favor, firma antes de fichar"); return; }
@@ -1161,6 +1306,22 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig }
       await fb().firestore().collection("registros_horarios").add(registro);
       setRegistros(r => [...r, { id: Date.now(), ...registro }]);
       setShowSignModal(false); setPendingFicharType(null);
+    } catch (e) { alert("Error al guardar: " + e.message); }
+  };
+
+  const handleConfirmFueraTurno = async () => {
+    if (!fueraTurnoAccepted) { alert("Debes aceptar la declaración de responsabilidad"); return; }
+    if (!fueraTurnoSigned) { alert("Por favor, firma la declaración"); return; }
+    const signature = fueraTurnoCanvasRef.current.toDataURL("image/png");
+    const now = new Date();
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
+    const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber fichado ${pendingFicharType} a las ${fueraTurnoInfo.currentTime}h fuera del horario establecido. Turno asignado ${fueraTurnoInfo.shiftLetter}: ${fueraTurnoInfo.horarioPrevisto}. La empresa no tiene responsabilidad al respecto.`;
+    const registro = { userId: userProfile.uid, employeeName, date: selectedDate, type: pendingFicharType, time: fueraTurnoInfo.currentTime, timestamp: now.toISOString(), signature, fueraTolerancia: true, declaracionFueraTurno: textoDeclaracion };
+    try {
+      await fb().firestore().collection("registros_horarios").add(registro);
+      setRegistros(r => [...r, { id: Date.now(), ...registro }]);
+      setShowFueraTurnoModal(false);
     } catch (e) { alert("Error al guardar: " + e.message); }
   };
 
@@ -1263,15 +1424,16 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig }
                         <th style={{ padding: "8px", textAlign: "left" }}>Firma</th>
                       </tr></thead>
                       <tbody>{adminRegistros.map((r, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #eee", background: r.retroactivo ? "#FFF8F0" : "white" }}>
+                        <tr key={idx} style={{ borderBottom: "1px solid #eee", background: r.retroactivo ? "#FFF8F0" : r.fueraTolerancia ? "#FFF3F3" : "white" }}>
                           <td style={{ padding: "8px" }}>
                             {r.date}
                             {r.retroactivo && <span style={{ marginLeft: "4px", fontSize: "10px", color: "#E65100", background: "#FFE0B2", padding: "1px 5px", borderRadius: "8px" }}>Retro</span>}
+                            {r.fueraTolerancia && <span style={{ marginLeft: "4px", fontSize: "10px", color: "#C62828", background: "#FFCDD2", padding: "1px 5px", borderRadius: "8px" }}>⚠️ Fuera</span>}
                           </td>
                           <td style={{ padding: "8px" }}>{r.employeeName}</td>
                           <td style={{ padding: "8px" }}>{r.type === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</td>
                           <td style={{ padding: "8px" }}>{r.time}</td>
-                          <td style={{ padding: "8px" }}>{r.scheduledTime ? <span style={{ color: "#2E7D32", fontWeight: "600" }}>{r.scheduledTime}</span> : <span style={{ color: "#bbb" }}>—</span>}</td>
+                          <td style={{ padding: "8px" }}>{r.scheduledTime ? <span style={{ color: "#2E7D32", fontWeight: "600" }}>{r.scheduledTime}</span> : r.fueraTolerancia ? <span style={{ color: "#C62828", fontSize: "11px" }}>Fuera de turno</span> : <span style={{ color: "#bbb" }}>—</span>}</td>
                           <td style={{ padding: "8px" }}>
                             {r.signature
                               ? <img src={r.signature} alt="firma" className="firma-img" onClick={() => setViewSignature(r.signature)} title="Ver firma" />
@@ -1287,6 +1449,50 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig }
             </div>
           )}
         </>
+      )}
+
+      {showFueraTurnoModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span>⚠️ Fichaje Fuera de Horario</span>
+              <button className="modal-close" onClick={() => setShowFueraTurnoModal(false)}>×</button>
+            </div>
+            <div style={{ background: "#FFCDD2", border: "1px solid #E57373", borderRadius: "8px", padding: "12px", marginBottom: "12px", fontSize: "12px", color: "#B71C1C", lineHeight: "1.6" }}>
+              <strong>⚠️ Estás fichando fuera de tu horario establecido</strong><br /><br />
+              Tu turno hoy (Turno <strong>{fueraTurnoInfo.shiftLetter}</strong>): {fueraTurnoInfo.horarioPrevisto}<br />
+              Hora actual: <strong>{fueraTurnoInfo.currentTime}</strong> (fuera de la ventana de ±{TOLERANCE_MIN} min)
+            </div>
+            <div style={{ background: "#FFF3E0", border: "1px solid #FF9800", borderRadius: "8px", padding: "12px", marginBottom: "12px", fontSize: "12px", color: "#5D4037", lineHeight: "1.6" }}>
+              <strong>Declaración de responsabilidad:</strong><br /><br />
+              Yo, <em>{linkedEmpName}</em>, declaro bajo mi responsabilidad que el fichaje de <strong>{pendingFicharType}</strong> a las <strong>{fueraTurnoInfo.currentTime}</strong>h se realiza fuera del horario establecido para mi turno ({fueraTurnoInfo.shiftLetter}: {fueraTurnoInfo.horarioPrevisto}). Asumo que la discrepancia horaria es por causa propia y que la empresa no tiene ninguna responsabilidad al respecto.
+            </div>
+            <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", marginBottom: "12px", fontSize: "13px", cursor: "pointer" }}>
+              <input type="checkbox" checked={fueraTurnoAccepted} onChange={e => setFueraTurnoAccepted(e.target.checked)} style={{ marginTop: "3px", flexShrink: 0 }} />
+              Acepto la declaración anterior y firmo este documento
+            </label>
+            <p style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Firma con el dedo o el ratón:</p>
+            <canvas
+              ref={fueraTurnoCanvasRef}
+              width={300}
+              height={120}
+              className="signature-canvas"
+              onMouseDown={startFueraTurnoDrawing}
+              onMouseMove={drawFueraTurno}
+              onMouseUp={stopFueraTurnoDrawing}
+              onMouseLeave={stopFueraTurnoDrawing}
+              onTouchStart={startFueraTurnoDrawing}
+              onTouchMove={drawFueraTurno}
+              onTouchEnd={stopFueraTurnoDrawing}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={clearFueraTurnoSignature}>Limpiar firma</button>
+              <button className="btn btn-danger btn-sm" style={{ flex: 2 }} onClick={handleConfirmFueraTurno} disabled={!fueraTurnoAccepted || !fueraTurnoSigned}>
+                Registrar {pendingFicharType === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showSignModal && (
@@ -1783,7 +1989,7 @@ export default function App() {
   return (
     <div>
       <div className="header">
-        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.6</span></h1>
+        <h1><span style={{ fontSize: "28px" }}>🥐</span>Pastelería Pardilla<span className="badge" style={{ marginLeft: "12px", fontSize: "11px" }}>v4.7</span></h1>
         <div className="header-right">
           <div className="header-user"><span>{userProfile.name}</span></div>
           <button className="logout-btn" onClick={handleLogout}>🚪 Salir</button>
