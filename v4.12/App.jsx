@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const styles = `
@@ -45,22 +45,19 @@ const styles = `
   .btn { padding: 10px 16px; border: none; border-radius: var(--radius-sm);
     font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
     transition: all 0.3s ease; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-primary { background: var(--primary); color: white; }
-  .btn-primary:hover:not(:disabled) { background: var(--primary-dark); transform: translateY(-2px); }
+  .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
   .btn-secondary { background: var(--secondary); color: var(--dark); }
-  .btn-secondary:hover:not(:disabled) { background: #C9A961; }
+  .btn-secondary:hover { background: #C9A961; }
   .btn-success { background: var(--success); color: white; }
-  .btn-success:hover:not(:disabled) { background: #45a049; }
+  .btn-success:hover { background: #45a049; }
   .btn-danger { background: var(--danger); color: white; }
-  .btn-danger:hover:not(:disabled) { background: #da190b; }
+  .btn-danger:hover { background: #da190b; }
   .btn-sm { padding: 6px 12px; font-size: 12px; }
   .input { width: 100%; padding: 12px; border: 1px solid var(--border);
     border-radius: var(--radius-sm); font-size: 16px; font-family: inherit; margin-bottom: 12px; }
   .input:focus { outline: none; border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1); }
-  .input.error { border-color: var(--danger); }
-  .form-error { color: var(--danger); font-size: 12px; margin-top: -8px; margin-bottom: 8px; }
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
   .login-screen { display: flex; min-height: 100vh; align-items: center;
@@ -84,14 +81,14 @@ const styles = `
   .employee-card { background: var(--card-bg); border-radius: var(--radius-sm);
     padding: 16px; margin-bottom: 12px; border-left: 4px solid var(--primary);
     display: flex; justify-content: space-between; align-items: center; }
-  .employee-card .info { flex: 1; cursor: pointer; }
+  .employee-card .info { flex: 1; }
   .employee-card .name { font-weight: 600; font-size: 16px; }
   .employee-card .role { font-size: 13px; color: #666; }
   .employee-card .actions { display: flex; gap: 8px; }
   .product-card { background: var(--card-bg); border-radius: var(--radius-sm);
     padding: 16px; margin-bottom: 12px; border-left: 4px solid var(--secondary);
     display: flex; justify-content: space-between; align-items: center; }
-  .product-card .info { flex: 1; cursor: pointer; }
+  .product-card .info { flex: 1; }
   .product-card .name { font-weight: 600; font-size: 16px; }
   .product-card .price { font-size: 18px; color: var(--primary); font-weight: 700; }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -102,20 +99,17 @@ const styles = `
   .stat-box .value { font-size: 24px; font-weight: 700; color: var(--primary); }
   .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.5); display: flex; align-items: center;
-    justify-content: center; z-index: 200; padding: 16px; }
+    justify-content: center; z-index: 200; }
   .modal-content { background: white; border-radius: var(--radius); padding: 24px;
-    max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; }
   .modal-header { font-size: 20px; font-weight: 700; margin-bottom: 16px;
     display: flex; justify-content: space-between; align-items: center; }
   .modal-close { background: transparent; border: none; font-size: 24px;
     cursor: pointer; color: var(--dark); }
-  .modal-footer { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; flex-wrap: wrap; }
+  .modal-footer { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
   .notification { position: fixed; bottom: 20px; right: 20px; background: var(--success);
     color: white; padding: 16px 20px; border-radius: var(--radius-sm);
-    box-shadow: var(--shadow); z-index: 300; animation: slideIn 0.3s ease;
-    max-width: calc(100vw - 40px); }
-  .notification.error { background: var(--danger); }
-  .notification.warning { background: var(--warning); }
+    box-shadow: var(--shadow); z-index: 300; animation: slideIn 0.3s ease; }
   @keyframes slideIn { from { transform: translateX(400px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; } }
   .loading-spinner { display: flex; flex-direction: column; align-items: center;
@@ -139,13 +133,12 @@ const styles = `
     border-radius: 50%; width: 44px; height: 44px; font-size: 24px;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
     font-weight: 700; }
-  .vacation-btn:hover:not(:disabled) { background: var(--primary-dark); }
-  .vacation-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .vacation-btn:hover { background: var(--primary-dark); }
   .vacation-value { font-size: 28px; font-weight: 700; color: var(--primary); text-align: center; }
   .score-display { display: flex; align-items: center; justify-content: center; gap: 24px; margin: 24px 0; }
   .score-number { font-size: 64px; font-weight: 700; color: var(--primary); }
   .score-bar { flex: 1; height: 20px; background: var(--light); border-radius: 10px; overflow: hidden; }
-  .score-bar-fill { height: 100%; background: linear-gradient(90deg, var(--success), var(--warning), var(--primary)); border-radius: 10px; }
+  .score-bar-fill { height: 100%; width: 74.2%; background: linear-gradient(90deg, var(--success), var(--warning), var(--primary)); border-radius: 10px; }
   .idea-card { background: var(--card-bg); border-left: 4px solid var(--info);
     border-radius: var(--radius-sm); padding: 16px; margin-bottom: 12px; }
   .idea-card .title { font-weight: 600; color: var(--dark); margin-bottom: 4px; }
@@ -162,16 +155,14 @@ const styles = `
   .result-box { background: var(--light); border-left: 4px solid var(--success);
     border-radius: var(--radius-sm); padding: 16px; margin: 16px 0;
     font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-  .demo-banner { background: #FFF8E1; border: 1px solid #FFC107; border-radius: 8px;
-    padding: 8px 12px; font-size: 12px; color: #E65100; margin-bottom: 12px; }
   .trend-icon { display: inline-block; font-size: 16px; margin-left: 4px; }
   .fichar-btn { padding: 20px; border-radius: var(--radius); border: none;
     font-size: 18px; font-weight: 700; width: 100%; cursor: pointer;
     margin: 8px 0; font-family: inherit; }
   .fichar-entrada { background: var(--success); color: white; }
-  .fichar-entrada:hover:not(:disabled) { background: #45a049; }
+  .fichar-entrada:hover { background: #45a049; }
   .fichar-salida { background: var(--danger); color: white; }
-  .fichar-salida:hover:not(:disabled) { background: #da190b; }
+  .fichar-salida:hover { background: #da190b; }
   .registro-card { background: var(--card-bg); border-radius: var(--radius-sm);
     padding: 12px; margin-bottom: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     border-left: 4px solid var(--info); }
@@ -213,20 +204,17 @@ const styles = `
     touch-action: none; background: white; display: block; width: 100%; height: 160px; }
   .firma-img { max-width: 80px; max-height: 40px; border: 1px solid #ddd;
     border-radius: 4px; cursor: pointer; vertical-align: middle; }
-  .breadcrumb { font-size: 13px; color: #666; margin-bottom: 12px; }
-  .breadcrumb a { color: var(--primary); cursor: pointer; text-decoration: none; }
-  .breadcrumb a:hover { text-decoration: underline; }
   @media (max-width: 768px) {
     .home-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
-    .modal-content { width: 100%; padding: 16px; }
+    .modal-content { width: 95%; }
     .header h1 { font-size: 18px; }
     .container { padding: 12px; }
   }
 `;
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_VERSION = "5.0";
+const APP_VERSION = "4.12";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
@@ -328,21 +316,17 @@ const ROLE_OPTIONS = [
   "Dependiente","Dependienta"
 ];
 
-// FIX #10: Festivos por año (extender cada año)
-const HOLIDAYS_BY_YEAR = {
-  2026: {
-    spain: ["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-08-15","2026-10-12","2026-11-01","2026-11-02","2026-12-07","2026-12-08","2026-12-25"],
-    madrid: ["2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02","2026-08-15","2026-10-12","2026-11-02","2026-11-09","2026-12-07","2026-12-08","2026-12-25"],
-  },
-  2027: {
-    spain: ["2027-01-01","2027-01-06","2027-03-25","2027-03-26","2027-05-01","2027-08-15","2027-10-12","2027-11-01","2027-12-06","2027-12-08","2027-12-25"],
-    madrid: ["2027-01-01","2027-01-06","2027-03-25","2027-03-26","2027-05-03","2027-08-16","2027-10-12","2027-11-01","2027-11-09","2027-12-06","2027-12-08","2027-12-25"],
-  },
-};
-const getMadridHolidays = (year) => HOLIDAYS_BY_YEAR[year]?.madrid || [];
-const getSpainHolidays = (year) => HOLIDAYS_BY_YEAR[year]?.spain || [];
+const SPAIN_HOLIDAYS_2026 = [
+  "2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02",
+  "2026-08-15","2026-10-12","2026-11-01","2026-11-02","2026-12-07","2026-12-08","2026-12-25"
+];
 
-// Datos demo (etiquetados como tales en UI)
+// Festivos Comunidad de Madrid 2026 (nacionales + regionales, excluye domingos)
+const MADRID_HOLIDAYS_2026 = [
+  "2026-01-01","2026-01-06","2026-04-02","2026-04-03","2026-05-01","2026-05-02",
+  "2026-08-15","2026-10-12","2026-11-02","2026-11-09","2026-12-07","2026-12-08","2026-12-25"
+];
+
 const SEARCH_TRENDS = [
   { term: "tarta cumpleaños alcorcón", volume: 820, trend: "up" },
   { term: "pastelería cerca de mí", volume: 1450, trend: "up" },
@@ -357,71 +341,20 @@ const SEARCH_TRENDS = [
 ];
 
 const SHIFT_TEMPLATES_DEFAULT = {
-  A: { L: null, M: null, X: { m1:"10:00",m2:"13:00",t1:"17:00",t2:"20:00" }, J: { m1:"09:00",m2:"14:00",t1:"17:00",t2:"20:45" }, V: { m1:"10:00",m2:"14:00",t1:"17:00",t2:"20:45" }, S: { m1:"10:00",m2:"15:00",t1:"17:00",t2:"20:00" }, D: { m1:"08:45",m2:"15:00",t1:"17:00",t2:"20:15" } },
-  B: { L: { m1:"10:00",m2:"13:00",t1:"17:30",t2:"20:00" }, M: { m1:"09:00",m2:"14:00",t1:"17:00",t2:"20:45" }, X: null, J: null, V: { m1:"09:00",m2:"13:15",t1:"17:15",t2:"20:45" }, S: { m1:"08:30",m2:"14:40",t1:"17:30",t2:"20:45" }, D: { m1:"08:30",m2:"14:15",t1:"17:30",t2:"20:45" } },
-  C: { L: { m1:"09:00",m2:"14:00",t1:"17:00",t2:"20:45" }, M: { m1:"10:00",m2:"13:30",t1:"17:30",t2:"20:00" }, X: { m1:"09:00",m2:"14:00",t1:"17:30",t2:"20:45" }, J: { m1:"10:00",m2:"13:30",t1:"17:30",t2:"20:15" }, V: null, S: { m1:"08:45",m2:"14:30",t1:"18:30",t2:"20:45" }, D: { m1:"10:30",m2:"13:45",t1:null,t2:null } },
-};
-
-// FIX #5: plantilla genérica para empleados fuera de rotación (panaderos, limpiadora)
-const SHIFT_TEMPLATE_PASTRY_DEFAULT = {
-  L: { m1:"05:00",m2:"13:00",t1:null,t2:null },
-  M: { m1:"05:00",m2:"13:00",t1:null,t2:null },
-  X: { m1:"05:00",m2:"13:00",t1:null,t2:null },
-  J: { m1:"05:00",m2:"13:00",t1:null,t2:null },
-  V: { m1:"05:00",m2:"13:00",t1:null,t2:null },
-  S: { m1:"05:00",m2:"13:00",t1:null,t2:null },
-  D: null,
+  A: { L: null, M: null, X: { m1:"10:00",m2:"13:00",t1:"17:00",t2:"20:00" }, J: { m1:"9:00",m2:"14:00",t1:"17:00",t2:"20:45" }, V: { m1:"10:00",m2:"14:00",t1:"17:00",t2:"20:45" }, S: { m1:"10:00",m2:"15:00",t1:"17:00",t2:"20:00" }, D: { m1:"8:45",m2:"15:00",t1:"17:00",t2:"20:15" } },
+  B: { L: { m1:"10:00",m2:"13:00",t1:"17:30",t2:"20:00" }, M: { m1:"9:00",m2:"14:00",t1:"17:00",t2:"20:45" }, X: null, J: null, V: { m1:"9:00",m2:"13:15",t1:"17:15",t2:"20:45" }, S: { m1:"8:30",m2:"14:40",t1:"17:30",t2:"20:45" }, D: { m1:"8:30",m2:"14:15",t1:"17:30",t2:"20:45" } },
+  C: { L: { m1:"9:00",m2:"14:00",t1:"17:00",t2:"20:45" }, M: { m1:"10:00",m2:"13:30",t1:"17:30",t2:"20:00" }, X: { m1:"9:00",m2:"14:00",t1:"17:30",t2:"20:45" }, J: { m1:"10:00",m2:"13:30",t1:"17:30",t2:"20:15" }, V: null, S: { m1:"8:45",m2:"14:30",t1:"18:30",t2:"20:45" }, D: { m1:"10:30",m2:"13:45",t1:null,t2:null } },
 };
 
 const ROTATION_DEFAULT = { referenceDate: "2026-04-06", assignments: { 1: 0, 2: 1, 4: 2 } };
 
-// FIX #21: typos corregidos
 const TRENDING_HOOKS = ["Abiertos Domingos","Ofertas Semanales","Tartas Personalizadas","Productos Ecológicos","Sin Gluten Disponibles","Venta Online","Catering Empresas","Clases de Repostería","Sostenibilidad","Recetas Caseras"];
-const TRENDING_PRODUCTS_FOCUS = ["Roscón de Reyes","Tartas Personalizadas","Croissants Artesanos","Bollería Variada","Pasteles Gourmet","Pan Integral","Postres Veganos","Churros Artesanos","Torrijas","Buñuelos"];
+const TRENDING_PRODUCTS_FOCUS = ["Roscón de Reyes","Tartas Personalizado","Croissants Artesanos","Bollería Variada","Pasteles Gourmet","Pan Integral","Postres Veganos","Churros Artesanos","Torrijas","Buñuelos"];
 const TRENDING_MUSIC = ["Música Relajante de Café","Lo-Fi Beats","Jazz Clásico","Indie Español","Pop Romántico","Ambient"];
-const TRENDING_HASHTAGS_POOL = ["#PasteleríaPardilla","#ArtesanoEnAlcorcón","#AlcorcónLife","#PanaderíaPerfecta","#PostreDelDía","#TartasDeEnsueño","#FelizDesayuno","#DesayunaConNosotros","#SaborArtesano","#MejorPasteleríaDeMadrid","#ChocolateArtesano","#FiestaConPardilla","#NuestrasPasiones","#HechoConAmor","#LasTartasMasRicas","#CaféYBollería","#DesayunoMadrid","#AlcorcónGastronomía","#PasteleroArtesano","#ProductosFrescos","#SaborTradicional","#PostresDeLujo"];
+const TRENDING_HASHTAGS_POOL = ["#PasteleriaPardilla","#ArtesanoPerdiz","#ArcóonLife","#PanaderiaPerfecta","#PostreDelDía","#TartasDeEnsuenio","#FelizDesayuno","#DesayunaConNosotros","#SaborArtesano","#MejorPasteleriaDeMadrid","#ChocolateArtesano","#FiestaConPardilla","#NuestrasPasiones","#HechoConAmor","#LasTartasMasRicas","#CaféYBollería","#DesayunoMadrid","#AlcorcónGastronomía","#PasteleroArtesano","#ProductosFrescos","#SaborTradicional","#PostresDeLujo"];
 const REEL_STRUCTURES = ["Hook visual (3s) → Producto destacado (5s) → Llamada a acción (2s)","Tendencia sonora + Transiciones dinámicas (8s) → Producto (3s)","Before/After de elaboración (6s) → Resultado final (3s) → Compra (1s)","Entrevista rápida cliente (4s) → Producto (3s) → CTA (2s)"];
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-
-// FIX #36: parseo seguro de localStorage
-function safeLocalGet(key, fallback) {
-  try {
-    const s = localStorage.getItem(key);
-    if (s === null || s === undefined) return fallback;
-    return JSON.parse(s);
-  } catch (e) {
-    console.warn(`localStorage corrupto en clave "${key}", usando fallback`, e);
-    return fallback;
-  }
-}
-function safeLocalSet(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.warn(`Error guardando en localStorage "${key}":`, e); }
-}
-
-// FIX #8: parseo de fechas YYYY-MM-DD a fecha LOCAL (evita bug UTC)
-function parseLocalDate(dateStr) {
-  if (!dateStr) return null;
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d, 12, 0, 0); // mediodía para evitar DST
-}
-function toLocalDateStr(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-// FIX #9: lunes de la semana correcto (también en domingo)
-function getMondayOfWeek(date) {
-  const d = new Date(date);
-  d.setHours(12, 0, 0, 0);
-  const day = d.getDay(); // 0=dom..6=sab
-  const diff = (day + 6) % 7; // distancia al lunes anterior
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
 function seededRandom(seed) {
   const x = Math.sin(seed * 9301 + 49297) * 49297;
   return x - Math.floor(x);
@@ -441,12 +374,17 @@ function getCompetitorPrices(product) {
 }
 
 function getCurrentShift(employeeId, date, rotationConfig) {
-  if (!rotationConfig?.assignments) return null;
   const { referenceDate, assignments } = rotationConfig;
   if (assignments[employeeId] === undefined) return null;
-  const refMonday = getMondayOfWeek(parseLocalDate(referenceDate));
-  const currMonday = getMondayOfWeek(date instanceof Date ? date : parseLocalDate(date));
-  const weeksDiff = Math.round((currMonday - refMonday) / (7 * 24 * 60 * 60 * 1000));
+  const ref = new Date(referenceDate);
+  const curr = new Date(date);
+  const day = curr.getDay();
+  const monday = new Date(curr);
+  monday.setDate(curr.getDate() - ((day + 6) % 7));
+  const refDay = ref.getDay();
+  const refMonday = new Date(ref);
+  refMonday.setDate(ref.getDate() - ((refDay + 6) % 7));
+  const weeksDiff = Math.round((monday - refMonday) / (7 * 24 * 60 * 60 * 1000));
   const shiftIndex = ((assignments[employeeId] + weeksDiff) % 3 + 3) % 3;
   return ["A", "B", "C"][shiftIndex];
 }
@@ -456,11 +394,7 @@ function generateDynamicContent(type) {
   const product = TRENDING_PRODUCTS_FOCUS[Math.floor(Math.random() * TRENDING_PRODUCTS_FOCUS.length)];
   const music = TRENDING_MUSIC[Math.floor(Math.random() * TRENDING_MUSIC.length)];
   const hashtags = [];
-  const usados = new Set();
-  while (hashtags.length < 5 && usados.size < TRENDING_HASHTAGS_POOL.length) {
-    const idx = Math.floor(Math.random() * TRENDING_HASHTAGS_POOL.length);
-    if (!usados.has(idx)) { usados.add(idx); hashtags.push(TRENDING_HASHTAGS_POOL[idx]); }
-  }
+  for (let i = 0; i < 5; i++) hashtags.push(TRENDING_HASHTAGS_POOL[Math.floor(Math.random() * TRENDING_HASHTAGS_POOL.length)]);
   const cta = ["¡Visítanos hoy!","Encarga ahora","Prueba nuestros sabores","¡No esperes más!"][Math.floor(Math.random() * 4)];
   if (type === "reel") {
     const structure = REEL_STRUCTURES[Math.floor(Math.random() * REEL_STRUCTURES.length)];
@@ -474,89 +408,10 @@ function generateDynamicContent(type) {
   }
 }
 
-// FIX #23: comparar versiones semver
-function isNewerVersion(remote, local) {
-  if (!remote || !local) return false;
-  const r = remote.split(".").map(n => parseInt(n) || 0);
-  const l = local.split(".").map(n => parseInt(n) || 0);
-  for (let i = 0; i < Math.max(r.length, l.length); i++) {
-    const a = r[i] || 0, b = l[i] || 0;
-    if (a > b) return true;
-    if (a < b) return false;
-  }
-  return false;
-}
-
-// FIX #6: Firebase facade con guarda
-const fb = () => {
-  if (typeof window === "undefined" || !window.firebase) {
-    throw new Error("Firebase SDK no cargado. Verifica el script en index.html.");
-  }
-  return window.firebase;
-};
-const fbReady = () => typeof window !== "undefined" && !!window.firebase;
-
-// FIX #32: comprime canvas a JPEG calidad 0.5 para reducir peso de firmas
-function canvasToCompressed(canvas) {
-  try {
-    return canvas.toDataURL("image/jpeg", 0.5);
-  } catch {
-    return canvas.toDataURL("image/png");
-  }
-}
-
-// FIX #42: hook reusable de firma para modales
-function useSignaturePad(canvasRef) {
-  const [hasSigned, setHasSigned] = useState(false);
-  const drawingRef = useRef(false);
-  const getPos = (e) => {
-    const c = canvasRef.current; if (!c) return { x: 0, y: 0 };
-    const r = c.getBoundingClientRect();
-    const sx = c.width / r.width, sy = c.height / r.height;
-    if (e.touches) return { x: (e.touches[0].clientX - r.left) * sx, y: (e.touches[0].clientY - r.top) * sy };
-    return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy };
-  };
-  const start = (e) => { e.preventDefault(); const c = canvasRef.current; if (!c) return; const ctx = c.getContext("2d"); const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); drawingRef.current = true; setHasSigned(true); };
-  const move = (e) => { e.preventDefault(); if (!drawingRef.current) return; const c = canvasRef.current; if (!c) return; const ctx = c.getContext("2d"); const p = getPos(e); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222"; ctx.lineTo(p.x, p.y); ctx.stroke(); };
-  const end = () => { drawingRef.current = false; };
-  const clear = () => { const c = canvasRef.current; if (!c) return; c.getContext("2d").clearRect(0, 0, c.width, c.height); setHasSigned(false); };
-  const reset = () => { drawingRef.current = false; setHasSigned(false); };
-  const handlers = { onMouseDown: start, onMouseMove: move, onMouseUp: end, onMouseLeave: end, onTouchStart: start, onTouchMove: move, onTouchEnd: end };
-  return { hasSigned, handlers, clear, reset };
-}
-
-// FIX #48: hash simple para integridad de firma+timestamp (no es criptográfico fuerte pero deja huella auditable)
-async function digestRecord(payload) {
-  try {
-    const data = new TextEncoder().encode(JSON.stringify(payload));
-    const buf = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-  } catch { return null; }
-}
-
-// FIX #13: Modal de confirmación reusable (sustituye window.confirm/prompt)
-function ConfirmModal({ title, message, confirmText = "Confirmar", cancelText = "Cancelar", danger, requireText, onConfirm, onCancel }) {
-  const [typed, setTyped] = useState("");
-  const ok = !requireText || typed === requireText;
-  return (
-    <div className="modal">
-      <div className="modal-content">
-        <div className="modal-header"><span>{title}</span><button className="modal-close" onClick={onCancel}>×</button></div>
-        <p style={{ marginBottom: 16, fontSize: 14 }}>{message}</p>
-        {requireText && (
-          <div className="form-group">
-            <label>Escribe <strong>{requireText}</strong> para confirmar:</label>
-            <input className="input" value={typed} onChange={e => setTyped(e.target.value)} autoFocus />
-          </div>
-        )}
-        <div className="modal-footer">
-          <button className="btn btn-secondary btn-sm" onClick={onCancel}>{cancelText}</button>
-          <button className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`} onClick={onConfirm} disabled={!ok}>{confirmText}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// ─── FIREBASE FACADE (compat SDK vía CDN) ────────────────────────────────────
+// En VS Code necesitas cargar Firebase vía CDN en index.html o instalar el SDK npm.
+// Este archivo asume que window.firebase está disponible (compat SDK).
+const fb = () => window.firebase;
 
 // ─── COMPONENTS ──────────────────────────────────────────────────────────────
 
@@ -571,7 +426,7 @@ function SetupScreen({ onConfigSet }) {
     e.preventDefault();
     if (!apiKey || !projectId || !authDomain) { setError("Por favor completa todos los campos"); return; }
     const config = { apiKey, projectId, authDomain, storageBucket: "", messagingSenderId: "", appId: "" };
-    safeLocalSet("pardilla_firebase_config", config);
+    localStorage.setItem("pardilla_firebase_config", JSON.stringify(config));
     setShowConfig(true);
     setTimeout(() => onConfigSet(config), 1000);
   };
@@ -610,7 +465,6 @@ function LoginScreen({ onLoginSuccess }) {
   const [isFirstUser, setIsFirstUser] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => { checkIfFirstUser(); }, []);
 
@@ -623,20 +477,18 @@ function LoginScreen({ onLoginSuccess }) {
   };
 
   const handleLogin = async (e) => {
-    e.preventDefault(); setError(""); setSubmitting(true);
+    e.preventDefault(); setError("");
     try { const r = await fb().auth().signInWithEmailAndPassword(email, password); onLoginSuccess(r.user); }
     catch (e) { setError(e.message); }
-    setSubmitting(false);
   };
 
   const handleCreateAdmin = async (e) => {
-    e.preventDefault(); setError(""); setSubmitting(true);
+    e.preventDefault(); setError("");
     try {
       const r = await fb().auth().createUserWithEmailAndPassword(email, password);
       await fb().firestore().collection("users").doc(r.user.uid).set({ uid: r.user.uid, email, name, role: "admin", createdAt: new Date().toISOString() });
       onLoginSuccess(r.user);
     } catch (e) { setError(e.message); }
-    setSubmitting(false);
   };
 
   if (loading) return <div className="loading-spinner"><div className="spinner"></div><div className="loading-text">Cargando...</div></div>;
@@ -648,13 +500,10 @@ function LoginScreen({ onLoginSuccess }) {
         <form onSubmit={isFirstUser ? handleCreateAdmin : handleLogin}>
           {error && <div className="error-message">{error}</div>}
           {isFirstUser && <div className="form-group"><label>Nombre</label><input type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" required /></div>}
-          <div className="form-group"><label>Email</label><input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ejemplo@correo.com" required autoComplete="email" /></div>
-          <div className="form-group"><label>Contraseña</label><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required autoComplete="current-password" minLength={6} /></div>
-          <button type="submit" className="btn btn-primary" style={{ width: "100%" }} disabled={submitting}>{submitting ? "Procesando..." : (isFirstUser ? "Crear Administrador" : "Iniciar Sesión")}</button>
+          <div className="form-group"><label>Email</label><input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ejemplo@correo.com" required /></div>
+          <div className="form-group"><label>Contraseña</label><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required /></div>
+          <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>{isFirstUser ? "Crear Administrador" : "Iniciar Sesión"}</button>
         </form>
-        <p style={{ fontSize: 11, color: "#888", marginTop: 16, textAlign: "center" }}>
-          Al usar esta app aceptas el tratamiento de tus datos según la política de privacidad de la empresa (RGPD). Los registros horarios y firmas se conservan 4 años conforme al RDL 8/2019.
-        </p>
       </div>
     </div>
   );
@@ -690,11 +539,9 @@ function HomeScreen({ userProfile, onNavigate }) {
   );
 }
 
-function EmployeesScreen({ employees, onOpenModal, onSelectEmployee }) {
+function EmployeesScreen({ employees, setEmployees, onOpenModal, onSelectEmployee }) {
   const [search, setSearch] = useState("");
-  // FIX #7: orden estable
-  const sorted = [...employees].sort((a, b) => a.id - b.id);
-  const filtered = sorted.filter(e => e.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = employees.filter(e => e.name.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="container">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
@@ -711,10 +558,9 @@ function EmployeesScreen({ employees, onOpenModal, onSelectEmployee }) {
   );
 }
 
-function ProductsScreen({ products, onOpenModal, onSelectProduct }) {
+function ProductsScreen({ products, setProducts, onOpenModal, onSelectProduct }) {
   const [search, setSearch] = useState("");
-  const sorted = [...products].sort((a, b) => a.id - b.id);
-  const filtered = sorted.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="container">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
@@ -725,7 +571,7 @@ function ProductsScreen({ products, onOpenModal, onSelectProduct }) {
         <div key={prod.id} className="product-card">
           <div className="info" onClick={() => onSelectProduct(prod)}><div className="name">{prod.name}</div><div className="role">{prod.category}</div></div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div className="price">{Number(prod.price || 0).toFixed(2)}€</div>
+            <div className="price">{prod.price.toFixed(2)}€</div>
             <button className="btn btn-sm btn-secondary" onClick={() => onSelectProduct(prod)}>Ver</button>
           </div>
         </div>
@@ -752,60 +598,36 @@ function ContentGenerator() {
   );
 }
 
-// ─── MANAGEMENT (con Firestore para ventas/promos/objetivos) ─────────────────
-// FIX #17: tareas, ventas, promos y objetivos en Firestore en lugar de localStorage
 function ManagementScreen() {
   const [activeTab, setActiveTab] = useState("stats");
   const [searchTerm, setSearchTerm] = useState("");
-  const [ventas, setVentas] = useState([]);
-  const [promociones, setPromociones] = useState([]);
-  const [objetivos, setObjetivos] = useState({ monthlyTarget: 5000, previousMonthSales: 4200 });
-  const [ventaForm, setVentaForm] = useState({ fecha: toLocalDateStr(new Date()), monto: "", categoria: "Bollería" });
+  const [ventas, setVentas] = useState(() => { const s = localStorage.getItem("pardilla_ventas"); return s ? JSON.parse(s) : []; });
+  const [promociones, setPromociones] = useState(() => { const s = localStorage.getItem("pardilla_promociones"); return s ? JSON.parse(s) : []; });
+  const [objetivos, setObjetivos] = useState(() => { const s = localStorage.getItem("pardilla_objetivos"); return s ? JSON.parse(s) : { monthlyTarget: 5000, previousMonthSales: 4200 }; });
+  const [ventaForm, setVentaForm] = useState({ fecha: new Date().toISOString().split("T")[0], monto: "", categoria: "Bollería" });
   const [promoForm, setPromoForm] = useState({ nombre: "", descuento: "", categoria: "Bollería", inicio: "", fin: "" });
-  const [montoError, setMontoError] = useState("");
   const filteredTrends = SEARCH_TRENDS.filter(t => t.term.toLowerCase().includes(searchTerm.toLowerCase()));
   const tabs = ["stats","analysis","suggestions","content","ventas","promociones","objetivos"];
   const tabLabels = ["Estadísticas","Análisis IA","Sugerencias","Contenidos","Ventas","Promociones","Objetivos"];
 
-  useEffect(() => {
-    if (!fbReady()) return;
-    const unsubV = fb().firestore().collection("ventas").onSnapshot(snap => setVentas(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("ventas:", e));
-    const unsubP = fb().firestore().collection("promociones").onSnapshot(snap => setPromociones(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("promociones:", e));
-    const unsubO = fb().firestore().collection("config").doc("objetivos").onSnapshot(d => { if (d.exists) setObjetivos(d.data()); }, e => console.error("objetivos:", e));
-    return () => { unsubV(); unsubP(); unsubO(); };
-  }, []);
-
-  const addVenta = async () => {
-    setMontoError("");
+  const addVenta = () => {
     const monto = parseFloat(ventaForm.monto);
-    if (!Number.isFinite(monto) || monto <= 0) { setMontoError("Introduce un importe válido mayor que 0"); return; }
-    if (!ventaForm.fecha) { setMontoError("Falta la fecha"); return; }
-    try {
-      await fb().firestore().collection("ventas").add({ ...ventaForm, monto, timestamp: new Date().toISOString() });
+    if (monto && ventaForm.fecha) {
+      const updated = [...ventas, { ...ventaForm, monto, timestamp: new Date().toISOString() }];
+      setVentas(updated); localStorage.setItem("pardilla_ventas", JSON.stringify(updated));
       setVentaForm(f => ({ ...f, monto: "" }));
-    } catch (e) { setMontoError("Error al guardar: " + e.message); }
+    }
   };
 
-  const addPromo = async () => {
-    if (!promoForm.nombre || !promoForm.descuento || !promoForm.inicio || !promoForm.fin) return;
-    const desc = parseInt(promoForm.descuento);
-    if (!Number.isFinite(desc) || desc <= 0 || desc > 100) return;
-    try {
-      await fb().firestore().collection("promociones").add({ ...promoForm, descuento: desc, timestamp: new Date().toISOString() });
+  const addPromo = () => {
+    if (promoForm.nombre && promoForm.descuento && promoForm.inicio && promoForm.fin) {
+      const updated = [...promociones, { ...promoForm, descuento: parseInt(promoForm.descuento), timestamp: new Date().toISOString() }];
+      setPromociones(updated); localStorage.setItem("pardilla_promociones", JSON.stringify(updated));
       setPromoForm({ nombre: "", descuento: "", categoria: "Bollería", inicio: "", fin: "" });
-    } catch (e) { console.error(e); }
+    }
   };
 
-  const saveObjetivos = async () => {
-    try { await fb().firestore().collection("config").doc("objetivos").set(objetivos); }
-    catch (e) { console.error(e); }
-  };
-
-  const now = new Date();
-  const thisMonthVentas = ventas.filter(v => {
-    const d = parseLocalDate(v.fecha); if (!d) return false;
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).reduce((s, v) => s + v.monto, 0);
+  const thisMonthVentas = ventas.filter(v => new Date(v.fecha).getMonth() === new Date().getMonth()).reduce((s, v) => s + v.monto, 0);
 
   return (
     <div className="container">
@@ -814,7 +636,6 @@ function ManagementScreen() {
 
       {activeTab === "stats" && (
         <div style={{ marginTop: "20px" }}>
-          <div className="demo-banner">⚠️ Datos de ejemplo: las tendencias mostradas son ficticias para demostración.</div>
           <h3>Tendencias de Búsqueda</h3>
           <div className="search-box"><input type="text" placeholder="Buscar tendencias..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
           {filteredTrends.map((trend, idx) => (
@@ -830,10 +651,9 @@ function ManagementScreen() {
 
       {activeTab === "analysis" && (
         <div style={{ marginTop: "20px" }}>
-          <div className="demo-banner">⚠️ Datos de ejemplo: las métricas son simuladas.</div>
           <h3>Análisis IA</h3>
           <div className="card">
-            <div className="score-display"><div className="score-number">742</div><div style={{ flex: 1 }}><div className="score-bar"><div className="score-bar-fill" style={{ width: "74.2%" }}></div></div><p style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>Score de rendimiento (demo)</p></div></div>
+            <div className="score-display"><div className="score-number">742</div><div style={{ flex: 1 }}><div className="score-bar"><div className="score-bar-fill"></div></div><p style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>Score de rendimiento</p></div></div>
             <div className="stat-grid">
               <div className="stat-box"><div className="label">Posición Competitiva</div><div className="value" style={{ fontSize: "18px" }}>Top 3</div></div>
               <div className="stat-box"><div className="label">Visibilidad Online</div><div className="value" style={{ fontSize: "18px" }}>Alta</div></div>
@@ -859,11 +679,7 @@ function ManagementScreen() {
         <div style={{ marginTop: "20px" }}>
           <h3>Registro de Ventas</h3>
           <div className="form-group"><label>Fecha</label><input type="date" className="input" value={ventaForm.fecha} onChange={e => setVentaForm(f => ({...f, fecha: e.target.value}))} /></div>
-          <div className="form-group">
-            <label>Monto (€)</label>
-            <input type="number" className={`input ${montoError ? "error" : ""}`} step="0.01" min="0" placeholder="0.00" value={ventaForm.monto} onChange={e => setVentaForm(f => ({...f, monto: e.target.value}))} />
-            {montoError && <div className="form-error">{montoError}</div>}
-          </div>
+          <div className="form-group"><label>Monto (€)</label><input type="number" className="input" step="0.01" placeholder="0.00" value={ventaForm.monto} onChange={e => setVentaForm(f => ({...f, monto: e.target.value}))} /></div>
           <div className="form-group"><label>Categoría</label>
             <select className="input" value={ventaForm.categoria} onChange={e => setVentaForm(f => ({...f, categoria: e.target.value}))}>
               {["Bollería","Tartas","Cafetería","Sándwiches","Bebidas","Otros"].map(c => <option key={c}>{c}</option>)}
@@ -872,12 +688,12 @@ function ManagementScreen() {
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={addVenta}>Registrar Venta</button>
           <div style={{ marginTop: "20px" }}>
             <h4>Ventas de Hoy</h4>
-            <p style={{ fontSize: "18px", fontWeight: "700", color: "var(--primary)" }}>€{ventas.filter(v => v.fecha === toLocalDateStr(new Date())).reduce((s, v) => s + v.monto, 0).toFixed(2)}</p>
+            <p style={{ fontSize: "18px", fontWeight: "700", color: "var(--primary)" }}>€{ventas.filter(v => v.fecha === new Date().toISOString().split("T")[0]).reduce((s, v) => s + v.monto, 0).toFixed(2)}</p>
             <h4 style={{ marginTop: "16px" }}>Últimas Ventas</h4>
-            {[...ventas].sort((a,b) => (b.timestamp||"").localeCompare(a.timestamp||"")).slice(0,5).map(v => (
-              <div key={v.id} className="card" style={{ marginTop: "8px" }}>
+            {ventas.slice(-5).reverse().map((v, idx) => (
+              <div key={idx} className="card" style={{ marginTop: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <div><strong>{v.categoria}</strong><p style={{ fontSize: "12px", color: "#666" }}>{parseLocalDate(v.fecha)?.toLocaleDateString("es-ES")}</p></div>
+                  <div><strong>{v.categoria}</strong><p style={{ fontSize: "12px", color: "#666" }}>{new Date(v.fecha).toLocaleDateString("es-ES")}</p></div>
                   <div style={{ fontSize: "16px", fontWeight: "700", color: "var(--primary)" }}>€{v.monto.toFixed(2)}</div>
                 </div>
               </div>
@@ -897,21 +713,21 @@ function ManagementScreen() {
             </select>
           </div>
           <div className="form-group"><label>Fecha Inicio</label><input type="date" className="input" value={promoForm.inicio} onChange={e => setPromoForm(f => ({...f, inicio: e.target.value}))} /></div>
-          <div className="form-group"><label>Fecha Fin</label><input type="date" className="input" value={promoForm.fin} min={promoForm.inicio} onChange={e => setPromoForm(f => ({...f, fin: e.target.value}))} /></div>
+          <div className="form-group"><label>Fecha Fin</label><input type="date" className="input" value={promoForm.fin} onChange={e => setPromoForm(f => ({...f, fin: e.target.value}))} /></div>
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={addPromo}>Crear Promoción</button>
           <div style={{ marginTop: "20px" }}>
             <h4>Promociones Activas</h4>
-            {promociones.filter(p => parseLocalDate(p.fin) >= new Date()).map(p => (
-              <div key={p.id} className="card" style={{ marginTop: "8px", borderLeft: "4px solid var(--success)" }}>
+            {promociones.filter(p => new Date(p.fin) >= new Date()).map((p, idx) => (
+              <div key={idx} className="card" style={{ marginTop: "8px", borderLeft: "4px solid var(--success)" }}>
                 <strong>{p.nombre}</strong>
                 <p style={{ fontSize: "12px", color: "#666" }}>{p.categoria} - {p.descuento}% descuento</p>
-                <p style={{ fontSize: "11px", color: "#999" }}>{parseLocalDate(p.inicio)?.toLocaleDateString("es-ES")} al {parseLocalDate(p.fin)?.toLocaleDateString("es-ES")}</p>
+                <p style={{ fontSize: "11px", color: "#999" }}>{new Date(p.inicio).toLocaleDateString("es-ES")} al {new Date(p.fin).toLocaleDateString("es-ES")}</p>
               </div>
             ))}
             <h4 style={{ marginTop: "16px" }}>Promociones Expiradas</h4>
-            {promociones.filter(p => parseLocalDate(p.fin) < new Date()).map(p => (
-              <div key={p.id} className="card" style={{ marginTop: "8px", borderLeft: "4px solid var(--danger)", opacity: "0.6" }}>
-                <strong>{p.nombre}</strong><p style={{ fontSize: "12px", color: "#666" }}>Expiró el {parseLocalDate(p.fin)?.toLocaleDateString("es-ES")}</p>
+            {promociones.filter(p => new Date(p.fin) < new Date()).map((p, idx) => (
+              <div key={idx} className="card" style={{ marginTop: "8px", borderLeft: "4px solid var(--danger)", opacity: "0.6" }}>
+                <strong>{p.nombre}</strong><p style={{ fontSize: "12px", color: "#666" }}>Expiró el {new Date(p.fin).toLocaleDateString("es-ES")}</p>
               </div>
             ))}
           </div>
@@ -921,18 +737,18 @@ function ManagementScreen() {
       {activeTab === "objetivos" && (
         <div style={{ marginTop: "20px" }}>
           <h3>Objetivos y KPIs</h3>
-          <div className="form-group"><label>Objetivo de Ventas Mensual (€)</label><input type="number" className="input" min="0" value={objetivos.monthlyTarget} onChange={e => setObjetivos(o => ({...o, monthlyTarget: parseInt(e.target.value) || 0}))} /></div>
-          <button className="btn btn-success" style={{ width: "100%", marginBottom: "16px" }} onClick={saveObjetivos}>Guardar Objetivo</button>
+          <div className="form-group"><label>Objetivo de Ventas Mensual (€)</label><input type="number" className="input" value={objetivos.monthlyTarget} onChange={e => setObjetivos(o => ({...o, monthlyTarget: parseInt(e.target.value) || 0}))} /></div>
+          <button className="btn btn-success" style={{ width: "100%", marginBottom: "16px" }} onClick={() => localStorage.setItem("pardilla_objetivos", JSON.stringify(objetivos))}>Guardar Objetivo</button>
           <div className="card" style={{ marginTop: "16px" }}>
             <h4>Progreso del Mes</h4>
             <div className="score-bar" style={{ marginTop: "12px", height: "30px" }}>
-              <div className="score-bar-fill" style={{ width: `${objetivos.monthlyTarget > 0 ? Math.min((thisMonthVentas / objetivos.monthlyTarget) * 100, 100) : 0}%` }}></div>
+              <div className="score-bar-fill" style={{ width: `${Math.min((thisMonthVentas / objetivos.monthlyTarget) * 100, 100)}%` }}></div>
             </div>
-            <p style={{ marginTop: "8px", color: "#666", fontSize: "12px" }}>€{thisMonthVentas.toFixed(2)} de €{Number(objetivos.monthlyTarget || 0).toFixed(2)}</p>
+            <p style={{ marginTop: "8px", color: "#666", fontSize: "12px" }}>€{thisMonthVentas.toFixed(2)} de €{objetivos.monthlyTarget.toFixed(2)}</p>
           </div>
           <div className="stat-grid" style={{ marginTop: "16px" }}>
             <div className="stat-box"><div className="label">Ticket Medio</div><div className="value" style={{ fontSize: "18px" }}>€{ventas.length > 0 ? (ventas.reduce((s, v) => s + v.monto, 0) / ventas.length).toFixed(2) : "0.00"}</div></div>
-            <div className="stat-box"><div className="label">Mes Anterior</div><div className="value" style={{ fontSize: "18px" }}>€{Number(objetivos.previousMonthSales || 0).toFixed(2)}</div></div>
+            <div className="stat-box"><div className="label">Mes Anterior</div><div className="value" style={{ fontSize: "18px" }}>€{objetivos.previousMonthSales.toFixed(2)}</div></div>
             <div className="stat-box"><div className="label">Categoría Top</div><div className="value" style={{ fontSize: "14px" }}>{ventas.length > 0 ? Object.entries(ventas.reduce((acc, v) => ({...acc, [v.categoria]: (acc[v.categoria] || 0) + v.monto}), {})).sort((a, b) => b[1] - a[1])[0][0] : "-"}</div></div>
           </div>
         </div>
@@ -941,65 +757,24 @@ function ManagementScreen() {
   );
 }
 
-// FIX #17, #18: tareas en Firestore (compartidas entre dispositivos) y modal funcional
-function TasksScreen({ userProfile }) {
-  const [tasks, setTasks] = useState([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const isAdminOrManager = userProfile.role === "admin" || userProfile.role === "manager";
-
-  useEffect(() => {
-    if (!fbReady()) return;
-    const unsub = fb().firestore().collection("tasks").orderBy("createdAt", "desc")
-      .onSnapshot(snap => setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("tasks:", e));
-    return () => unsub();
-  }, []);
-
-  const toggleTask = async (t) => {
-    try { await fb().firestore().collection("tasks").doc(t.id).update({ completed: !t.completed, completedAt: !t.completed ? new Date().toISOString() : null }); }
-    catch (e) { console.error(e); }
-  };
-
-  const addTask = async (data) => {
-    try { await fb().firestore().collection("tasks").add({ ...data, completed: false, createdAt: new Date().toISOString(), createdBy: userProfile.name }); }
-    catch (e) { console.error(e); }
-  };
-
-  const deleteTask = async (id) => {
-    try { await fb().firestore().collection("tasks").doc(id).delete(); }
-    catch (e) { console.error(e); }
-  };
-
-  // El empleado solo ve tareas no completadas asignadas a él o globales
-  const visible = userProfile.role === "empleado"
-    ? tasks.filter(t => !t.assignedTo || t.assignedTo === userProfile.uid || t.assignedTo === "all")
-    : tasks;
-
+function TasksScreen({ onOpenModal }) {
+  const [tasks, setTasks] = useState(() => { const s = localStorage.getItem("pardilla_tasks"); return s ? JSON.parse(s) : []; });
+  const toggleTask = (id) => { const updated = tasks.map(t => t.id === id ? {...t, completed: !t.completed} : t); setTasks(updated); localStorage.setItem("pardilla_tasks", JSON.stringify(updated)); };
   return (
     <div className="container">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <h2>{userProfile.role === "empleado" ? "Mis Tareas" : "Tareas del equipo"}</h2>
-        {isAdminOrManager && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Nueva</button>}
+        <h2>Tareas</h2><button className="btn btn-primary btn-sm" onClick={() => onOpenModal("addTask")}>+ Nueva</button>
       </div>
-      {visible.length === 0 && <p style={{ color: "#999" }}>No hay tareas</p>}
-      {visible.map(task => (
-        <div key={task.id} className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: 8 }}>
-          <div style={{ flex: 1 }}>
-            <h4 style={{ textDecoration: task.completed ? "line-through" : "none", opacity: task.completed ? 0.6 : 1 }}>{task.title}</h4>
-            {task.description && <p style={{ fontSize: "13px", color: "#666" }}>{task.description}</p>}
-            <p style={{ fontSize: 11, color: "#999", marginTop: 4 }}>Creado por {task.createdBy || "—"}</p>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <button className="btn btn-sm btn-secondary" onClick={() => toggleTask(task)} title={task.completed ? "Marcar pendiente" : "Marcar completada"}>{task.completed ? "✓" : "○"}</button>
-            {isAdminOrManager && <button className="btn btn-sm btn-danger" onClick={() => deleteTask(task.id)}>×</button>}
-          </div>
+      {tasks.map(task => (
+        <div key={task.id} className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+          <div style={{ flex: 1 }}><h4 style={{ textDecoration: task.completed ? "line-through" : "none" }}>{task.title}</h4><p style={{ fontSize: "13px", color: "#666" }}>{task.description}</p></div>
+          <button className="btn btn-sm btn-secondary" onClick={() => toggleTask(task.id)}>{task.completed ? "✓" : "○"}</button>
         </div>
       ))}
-      {showAdd && <AddTaskModal onClose={() => setShowAdd(false)} onAdd={async (data) => { await addTask(data); setShowAdd(false); }} />}
     </div>
   );
 }
 
-// FIX #1, #2: ShiftPlanning ya recibe shiftTemplates correctos y guarda en path único
 function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRotationConfig }) {
   const [localRotation, setLocalRotation] = useState(rotationConfig);
   const [saving, setSaving] = useState(false);
@@ -1009,48 +784,58 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
   const [newEmpId, setNewEmpId] = useState("");
   const [addEmpId, setAddEmpId] = useState("");
   const [addShiftIdx, setAddShiftIdx] = useState("0");
-  const [confirmRemove, setConfirmRemove] = useState(null);
+
+  useEffect(() => {
+    fb().firestore().collection("config").doc("rotation").get()
+      .then(doc => { if (doc.exists) { setLocalRotation(doc.data()); setRotationConfig(doc.data()); } })
+      .catch(e => console.error(e));
+  }, []);
 
   useEffect(() => { setLocalRotation(rotationConfig); }, [rotationConfig]);
 
   const today = new Date();
-  const weekStart = getMondayOfWeek(today);
+  const day = today.getDay();
+  const weekStart = new Date(today); weekStart.setDate(today.getDate() - ((day + 6) % 7));
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
 
+  // Calcula weeksDiff entre lunes de referencia y lunes de la semana actual
   const getWeeksDiff = (rotation) => {
-    const refMonday = getMondayOfWeek(parseLocalDate(rotation.referenceDate));
+    const ref = new Date(rotation.referenceDate);
+    const refMonday = new Date(ref);
+    refMonday.setDate(ref.getDate() - ((ref.getDay() + 6) % 7));
     return Math.round((weekStart - refMonday) / (7 * 24 * 60 * 60 * 1000));
   };
 
-  const persistRotation = async (updated) => {
-    setLocalRotation(updated); setRotationConfig(updated);
-    safeLocalSet("pardilla_rotation", updated);
-    try { await fb().firestore().collection("shiftConfig").doc("rotation").set(updated); }
-    catch (e) { console.error("rotation save:", e); }
-  };
-
+  // El admin selecciona el turno deseado para ESTA SEMANA (desiredShiftIdx 0=A,1=B,2=C).
+  // Hay que retroceder el offset: assignment = (deseado − weeksDiff) mod 3
   const handleShiftChange = (empId, desiredShiftIdx) => {
     const weeksDiff = getWeeksDiff(localRotation);
     const newAssignment = ((parseInt(desiredShiftIdx) - weeksDiff) % 3 + 3) % 3;
-    persistRotation({ ...localRotation, assignments: { ...localRotation.assignments, [empId]: newAssignment } });
+    const updated = { ...localRotation, assignments: { ...localRotation.assignments, [empId]: newAssignment } };
+    setLocalRotation(updated); setRotationConfig(updated);
+    localStorage.setItem("pardilla_rotation", JSON.stringify(updated));
+    fb().firestore().collection("config").doc("rotation").set(updated).catch(console.error);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    try { await fb().firestore().collection("shiftConfig").doc("rotation").set(localRotation); safeLocalSet("pardilla_rotation", localRotation); setSaved(true); setTimeout(() => setSaved(false), 3000); }
+    try { await fb().firestore().collection("config").doc("rotation").set(localRotation); localStorage.setItem("pardilla_rotation", JSON.stringify(localRotation)); setSaved(true); setTimeout(() => setSaved(false), 3000); }
     catch (e) { alert("Error al guardar: " + e.message); }
     setSaving(false);
   };
 
-  const handleRemoveFromRotation = (empId) => {
-    setConfirmRemove(empId);
+  const persistRotation = (updated) => {
+    setLocalRotation(updated); setRotationConfig(updated);
+    localStorage.setItem("pardilla_rotation", JSON.stringify(updated));
+    fb().firestore().collection("config").doc("rotation").set(updated).catch(console.error);
   };
-  const confirmRemoveDo = () => {
-    if (confirmRemove == null) return;
+
+  const handleRemoveFromRotation = (empId) => {
+    const emp = employees.find(e => e.id === empId);
+    if (!window.confirm(`¿Quitar a ${emp?.name} de la rotación A/B/C?`)) return;
     const newAssignments = { ...localRotation.assignments };
-    delete newAssignments[confirmRemove];
+    delete newAssignments[empId];
     persistRotation({ ...localRotation, assignments: newAssignments });
-    setConfirmRemove(null);
   };
 
   const handleReplaceEmployee = () => {
@@ -1072,9 +857,6 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
     setAddEmpId(""); setAddShiftIdx("0");
   };
 
-  // FIX #7: orden estable
-  const sortedAssignments = Object.keys(localRotation.assignments).map(Number).sort((a,b) => a - b);
-
   return (
     <div className="container">
       <h2>Planificación de Turnos</h2>
@@ -1082,7 +864,7 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
       {saved && <div className="success-message">Cambios guardados correctamente</div>}
       <div style={{ marginTop: "20px" }}>
         <h3>Asignación Actual - Semana del {weekStart.toLocaleDateString("es-ES", { day: "numeric", month: "numeric" })} al {weekEnd.toLocaleDateString("es-ES", { day: "numeric", month: "numeric" })}</h3>
-        {sortedAssignments.map(empId => {
+        {Object.keys(localRotation.assignments).map(Number).map(empId => {
           const emp = employees.find(e => e.id === empId);
           const shiftLetter = getCurrentShift(empId, weekStart, localRotation) || "A";
           const shiftIdx = ["A","B","C"].indexOf(shiftLetter);
@@ -1105,13 +887,13 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
       <div style={{ marginTop: "28px" }}>
         <h3 style={{ marginBottom: "8px" }}>Gestión de Empleados en Rotación</h3>
         <p style={{ fontSize: "12px", color: "#666", marginBottom: "12px" }}>Empleados que rotan semanalmente entre los turnos A, B y C (dependientes y ayudantes).</p>
-        {sortedAssignments.map(empId => {
+        {Object.keys(localRotation.assignments).map(Number).map(empId => {
           const emp = employees.find(e => e.id === empId);
           const shiftLetter = getCurrentShift(empId, weekStart, localRotation) || "A";
           return (
             <div key={empId} className="card" style={{ marginBottom: "8px", borderLeft: "4px solid var(--info)", padding: "12px 16px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <span style={{ fontWeight: "600" }}>{emp?.name || "Empleado #"+empId}</span>
                   <span style={{ fontSize: "12px", color: "#666" }}>{emp?.role || ""}</span>
                   <div className={`turno-badge turno-${shiftLetter}`} style={{ fontSize: "13px", padding: "3px 10px" }}>{shiftLetter}</div>
@@ -1175,25 +957,34 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
           </div>
         </div>
       )}
-
-      {confirmRemove != null && (
-        <ConfirmModal
-          title="Quitar de rotación"
-          message={`¿Quitar a ${employees.find(e => e.id === confirmRemove)?.name || "este empleado"} de la rotación A/B/C?`}
-          danger
-          confirmText="Sí, quitar"
-          onCancel={() => setConfirmRemove(null)}
-          onConfirm={confirmRemoveDo}
-        />
-      )}
     </div>
   );
 }
 
-// FIX #42: SignatureCanvas usa el hook
 function SignatureCanvas({ assignmentDetails, onSave, onCancel }) {
   const canvasRef = useRef(null);
-  const { hasSigned, handlers, clear } = useSignaturePad(canvasRef);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const lastPos = useRef(null);
+  const getPos = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if (e.touches) return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+  const startDraw = (e) => { e.preventDefault(); setIsDrawing(true); lastPos.current = getPos(e); };
+  const draw = (e) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const ctx = canvasRef.current.getContext("2d");
+    const pos = getPos(e);
+    ctx.beginPath(); ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y); ctx.strokeStyle = "#333"; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.stroke();
+    lastPos.current = pos;
+  };
+  const stopDraw = (e) => { if (e) e.preventDefault(); setIsDrawing(false); lastPos.current = null; };
+  const clear = () => { const c = canvasRef.current; c.getContext("2d").clearRect(0, 0, c.width, c.height); };
   const a = assignmentDetails;
   return (
     <div className="modal"><div className="modal-content">
@@ -1204,51 +995,47 @@ function SignatureCanvas({ assignmentDetails, onSave, onCancel }) {
         {a.note && <p><strong>Nota:</strong> {a.note}</p>}
       </div>
       <p style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>Firma con el dedo en el recuadro:</p>
-      <canvas ref={canvasRef} width={400} height={150} className="signature-canvas" {...handlers} />
+      <canvas ref={canvasRef} width={400} height={150}
+        style={{ border: "2px solid #DDD", borderRadius: "8px", width: "100%", touchAction: "none", background: "white", display: "block" }}
+        onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
+        onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={stopDraw}
+      />
       <div style={{ marginTop: "8px" }}><button className="btn btn-secondary btn-sm" onClick={clear}>Borrar firma</button></div>
       <div className="modal-footer">
         <button className="btn btn-secondary btn-sm" onClick={onCancel}>Cancelar</button>
-        <button className="btn btn-success btn-sm" onClick={() => onSave(canvasToCompressed(canvasRef.current))} disabled={!hasSigned}>Confirmar Firma</button>
+        <button className="btn btn-success btn-sm" onClick={() => onSave(canvasRef.current.toDataURL())}>Confirmar Firma</button>
       </div>
     </div></div>
   );
 }
 
-// FIX #34: validar que el empleado tiene días suficientes
-function AssignVacationsScreen({ employees, vacationAssignments, addVacationAssignment, deleteVacationAssignment }) {
+function AssignVacationsScreen({ employees, vacationAssignments, setVacationAssignments }) {
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || null);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [customDays, setCustomDays] = useState("");
   const [note, setNote] = useState("");
   const [saved, setSaved] = useState(false);
-  const [warning, setWarning] = useState("");
-
   const calcDays = () => {
     if (startDate && endDate) {
-      const sd = parseLocalDate(startDate), ed = parseLocalDate(endDate);
-      if (!sd || !ed) return 0;
-      const diff = Math.round((ed - sd) / 86400000) + 1;
+      const diff = Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1;
       if (diff > 0) return diff;
     }
-    const n = parseInt(customDays);
-    return Number.isFinite(n) && n > 0 ? n : 0;
+    return parseInt(customDays) || 0;
   };
   const days = calcDays();
-
-  const selectedEmp = employees.find(e => e.id === selectedEmpId);
-  const availableDays = selectedEmp ? selectedEmp.monthsWorked * 2.5 + selectedEmp.workedHolidays + selectedEmp.vacationDays : 0;
-
-  const handleAssign = async () => {
-    setWarning("");
+  const handleAssign = () => {
     if (!selectedEmpId || days <= 0) return;
-    if (days > availableDays) { setWarning(`Atención: el empleado solo tiene ${availableDays.toFixed(1)} días disponibles. Se asignarán de todas formas pero el contador quedará en negativo.`); }
-    const newA = { id: Date.now().toString(), employeeId: selectedEmpId, startDate: startDate || null, endDate: endDate || null, days, note, status: "pending", signatureData: null, signedAt: null, assignedAt: new Date().toISOString() };
-    await addVacationAssignment(newA);
+    const newA = { id: Date.now(), employeeId: selectedEmpId, startDate: startDate || null, endDate: endDate || null, days, note, status: "pending", signatureData: null, signedAt: null, assignedAt: new Date().toISOString() };
+    const updated = [...vacationAssignments, newA];
+    setVacationAssignments(updated); localStorage.setItem("pardilla_vacation_assignments", JSON.stringify(updated));
     setSaved(true); setTimeout(() => setSaved(false), 3000);
     setStartDate(""); setEndDate(""); setCustomDays(""); setNote("");
   };
-
+  const handleDelete = (id) => {
+    const updated = vacationAssignments.filter(a => a.id !== id);
+    setVacationAssignments(updated); localStorage.setItem("pardilla_vacation_assignments", JSON.stringify(updated));
+  };
   return (
     <div className="container">
       <h2>Asignar Vacaciones</h2>
@@ -1259,12 +1046,10 @@ function AssignVacationsScreen({ employees, vacationAssignments, addVacationAssi
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
-        {selectedEmp && <div style={{ background: "#E3F2FD", padding: 8, borderRadius: 6, fontSize: 12, marginBottom: 12 }}>Días disponibles: <strong>{availableDays.toFixed(1)}</strong></div>}
         <div className="form-group"><label>Fecha inicio (opcional)</label><input type="date" className="input" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
         <div className="form-group"><label>Fecha fin (opcional)</label><input type="date" className="input" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} /></div>
         {(!startDate || !endDate) && <div className="form-group"><label>Número de días</label><input type="number" className="input" value={customDays} onChange={e => setCustomDays(e.target.value)} min="1" placeholder="Días de vacaciones" /></div>}
         {days > 0 && <div style={{ background: "#E8F5E9", padding: "12px", borderRadius: "8px", marginBottom: "16px", fontWeight: "600", color: "#2E7D32" }}>Días a asignar: {days}</div>}
-        {warning && <div style={{ background: "#FFF3E0", color: "#E65100", padding: 10, borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{warning}</div>}
         <div className="form-group"><label>Nota (opcional)</label><input type="text" className="input" value={note} onChange={e => setNote(e.target.value)} placeholder="Ej: Vacaciones verano" /></div>
         {saved && <div style={{ color: "#2E7D32", fontWeight: "600", marginBottom: "12px" }}>✓ Asignación creada — pendiente de firma del empleado</div>}
         <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleAssign} disabled={!selectedEmpId || days <= 0}>Asignar Vacaciones (Pendiente de firma)</button>
@@ -1272,7 +1057,7 @@ function AssignVacationsScreen({ employees, vacationAssignments, addVacationAssi
       <div className="card" style={{ marginTop: "16px" }}>
         <h4 style={{ marginBottom: "16px" }}>Asignaciones realizadas</h4>
         {vacationAssignments.length === 0 && <p style={{ color: "#999" }}>No hay asignaciones</p>}
-        {[...vacationAssignments].sort((a,b) => (b.assignedAt||"").localeCompare(a.assignedAt||"")).map(a => {
+        {[...vacationAssignments].reverse().map(a => {
           const emp = employees.find(e => e.id === a.employeeId);
           return (
             <div key={a.id} style={{ background: a.status === "signed" ? "#E8F5E9" : "#FFF3E0", border: `1px solid ${a.status === "signed" ? "#4CAF50" : "#FF9800"}`, borderRadius: "8px", padding: "12px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -1284,7 +1069,7 @@ function AssignVacationsScreen({ employees, vacationAssignments, addVacationAssi
                   {a.signedAt && <span style={{ fontSize: "12px", color: "#666", marginLeft: "8px" }}>Firmada: {new Date(a.signedAt).toLocaleDateString("es-ES")}</span>}
                 </div>
               </div>
-              {a.status === "pending" && <button className="btn btn-danger btn-sm" onClick={() => deleteVacationAssignment(a.id)}>×</button>}
+              {a.status === "pending" && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(a.id)}>×</button>}
             </div>
           );
         })}
@@ -1293,25 +1078,26 @@ function AssignVacationsScreen({ employees, vacationAssignments, addVacationAssi
   );
 }
 
-// FIX #33: bloquear -/+ si hay asignaciones firmadas pendientes recientes
-function VacationPlanningScreen({ employees, updateEmployeeVacation, userProfile, vacationAssignments, signVacationAssignment }) {
+function VacationPlanningScreen({ employees, setEmployees, userProfile, vacationAssignments, setVacationAssignments }) {
   const [signingAssignment, setSigningAssignment] = useState(null);
   const visible = userProfile.role === "empleado" ? employees.filter(e => e.id === userProfile.linkedEmployeeId) : employees;
   const canModify = userProfile.role === "admin";
+  const updateVacation = (empId, delta) => {
+    const updated = employees.map(e => e.id === empId ? {...e, vacationDays: e.vacationDays + delta} : e);
+    setEmployees(updated); localStorage.setItem("pardilla_employees", JSON.stringify(updated));
+  };
   const pendingAssignments = (userProfile.role === "empleado" && userProfile.linkedEmployeeId)
     ? vacationAssignments.filter(a => a.employeeId === userProfile.linkedEmployeeId && a.status === "pending")
     : [];
-
-  const handleSign = async (signatureData) => {
+  const handleSign = (signatureData) => {
     const a = signingAssignment;
-    await signVacationAssignment(a, signatureData);
+    const updatedA = vacationAssignments.map(x => x.id === a.id ? { ...x, status: "signed", signatureData, signedAt: new Date().toISOString() } : x);
+    setVacationAssignments(updatedA); localStorage.setItem("pardilla_vacation_assignments", JSON.stringify(updatedA));
+    const updatedE = employees.map(e => e.id === a.employeeId ? { ...e, vacationDays: e.vacationDays - a.days } : e);
+    setEmployees(updatedE); localStorage.setItem("pardilla_employees", JSON.stringify(updatedE));
     setSigningAssignment(null);
   };
-
-  if (userProfile.role === "empleado" && !userProfile.linkedEmployeeId) {
-    return <div className="container"><h2>Mis Vacaciones</h2><div className="card" style={{ marginTop: "16px", background: "#FFF3E0", border: "2px solid #FF9800" }}><p style={{ color: "#E65100" }}>No tienes un empleado asignado. Contacta con tu administrador.</p></div></div>;
-  }
-
+  if (userProfile.role === "empleado" && !userProfile.linkedEmployeeId) return <div className="container"><h2>Mis Vacaciones</h2><div className="card" style={{ marginTop: "16px", background: "#FFF3E0", border: "2px solid #FF9800" }}><p style={{ color: "#E65100" }}>No tienes un empleado asignado. Contacta con tu administrador.</p></div></div>;
   return (
     <div className="container">
       <h2>{userProfile.role === "empleado" ? "Mis Vacaciones" : "Planificación de Vacaciones"}</h2>
@@ -1337,9 +1123,9 @@ function VacationPlanningScreen({ employees, updateEmployeeVacation, userProfile
               <div className="stat-box"><div className="label">Ajuste admin</div><div className="value" style={{ color: emp.vacationDays < 0 ? "#F44336" : "var(--primary)" }}>{emp.vacationDays}</div></div>
             </div>
             <div className="vacation-control">
-              {canModify && <button className="vacation-btn" onClick={() => updateEmployeeVacation(emp.id, -1)} title="Restar 1 día">−</button>}
+              {canModify && <button className="vacation-btn" onClick={() => updateVacation(emp.id, -1)}>−</button>}
               <div className="vacation-value" style={{ color: total < 0 ? "#F44336" : "var(--primary)" }}>{total.toFixed(1)}</div>
-              {canModify && <button className="vacation-btn" onClick={() => updateEmployeeVacation(emp.id, 1)} title="Sumar 1 día">+</button>}
+              {canModify && <button className="vacation-btn" onClick={() => updateVacation(emp.id, 1)}>+</button>}
             </div>
             {signed.length > 0 && (
               <div style={{ marginTop: "12px", borderTop: "1px solid #EEE", paddingTop: "12px" }}>
@@ -1357,29 +1143,22 @@ function VacationPlanningScreen({ employees, updateEmployeeVacation, userProfile
   );
 }
 
-// FIX #9, #29: lunes correcto + título consistente
-function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotationConfig, pastryTemplate }) {
-  const [selectedEmpId, setSelectedEmpId] = useState(() => userProfile.role === "empleado" ? userProfile.linkedEmployeeId : (employees[0]?.id || null));
-  const [weekStart, setWeekStart] = useState(() => getMondayOfWeek(new Date()));
+function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotationConfig }) {
+  const [selectedEmpId, setSelectedEmpId] = useState(() => userProfile.role === "empleado" ? userProfile.linkedEmployeeId : 1);
+  const [weekStart, setWeekStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - d.getDay() + 1); return d; });
   const emp = employees.find(e => e.id === selectedEmpId);
   const shift = selectedEmpId ? getCurrentShift(selectedEmpId, weekStart, rotationConfig) : null;
+  const shiftTemplate = shift ? shiftTemplates[shift] : null;
 
   if (!selectedEmpId || !emp) return <div className="container"><h2>Mi Horario</h2><div className="card" style={{ marginTop: "16px", background: "#FFF3E0", border: "2px solid #FF9800" }}><p style={{ color: "#E65100" }}>No tienes un empleado asignado. Contacta con tu administrador.</p></div></div>;
-
-  // FIX #5: si NO está en rotación, usar plantilla pastry
-  const effectiveTemplate = shift ? shiftTemplates[shift] : (emp.shiftType === "pastry" ? pastryTemplate : null);
-  const shiftLabel = shift || (emp.shiftType === "pastry" ? "PA" : "—");
-
-  if (!effectiveTemplate) {
-    return <div className="container"><h2>Mi Horario</h2><div className="card" style={{ marginTop: "16px" }}><h3>{emp.name}</h3><p style={{ color: "#999", marginTop: "8px" }}>No tienes turno asignado esta semana. Habla con tu responsable.</p></div></div>;
-  }
+  if (!shift || !shiftTemplate) return <div className="container"><h2>Mi Horario</h2><div className="card" style={{ marginTop: "16px" }}><h3>{emp.name}</h3><p style={{ color: "#999", marginTop: "8px" }}>No tienes turno asignado esta semana.</p></div></div>;
 
   const days = ["L","M","X","J","V","S","D"];
   const dayLabels = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
   const schedule = days.map((day, idx) => {
     const date = new Date(weekStart); date.setDate(weekStart.getDate() + idx);
-    const ds = effectiveTemplate[day];
-    if (ds === null || ds === undefined) return { date, label: dayLabels[idx], isFree: true };
+    const ds = shiftTemplate[day];
+    if (ds === null) return { date, label: dayLabels[idx], isFree: true };
     return { date, label: dayLabels[idx], isFree: false, morning: ds.m1 && ds.m2 ? `${ds.m1} - ${ds.m2}` : "-", afternoon: ds.t1 && ds.t2 ? `${ds.t1} - ${ds.t2}` : "-" };
   });
 
@@ -1389,8 +1168,8 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
 
   return (
     <div className="container">
-      <h2>Mi Horario</h2>
-      {(userProfile.role === "admin" || userProfile.role === "manager") && (
+      <h2>Consultar Horario</h2>
+      {userProfile.role === "admin" && (
         <div className="form-group" style={{ marginTop: "16px" }}>
           <label>Empleado</label>
           <select className="input" value={selectedEmpId} onChange={e => setSelectedEmpId(parseInt(e.target.value))}>
@@ -1400,8 +1179,7 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
       )}
       <div className="card" style={{ marginTop: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-          <h3>{emp.name}</h3>
-          <div className={`turno-badge turno-${shiftLabel === "PA" ? "C" : shiftLabel}`}>{shiftLabel}</div>
+          <h3>{emp.name}</h3><div className={`turno-badge turno-${shift}`}>{shift}</div>
         </div>
       </div>
       <div className="week-nav">
@@ -1421,11 +1199,9 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
   );
 }
 
-// FIX #3, #5, #15, #31, #47, #48: fichaje robusto con histórico, validación pastry, hash, etc.
-function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, pastryTemplate, showNotification }) {
+function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig }) {
   const [registros, setRegistros] = useState([]);
-  const [loadingRegistros, setLoadingRegistros] = useState(true);
-  const [selectedDate] = useState(toLocalDateStr(new Date()));
+  const [selectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -1433,60 +1209,34 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
   const [adminSearched, setAdminSearched] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
   const [pendingFicharType, setPendingFicharType] = useState(null);
+  const [hasSigned, setHasSigned] = useState(false);
   const [viewSignature, setViewSignature] = useState(null);
   const [showRetroModal, setShowRetroModal] = useState(false);
   const [retroDate, setRetroDate] = useState("");
   const [retroTime, setRetroTime] = useState("08:00");
   const [retroType, setRetroType] = useState("entrada");
   const [retroAccepted, setRetroAccepted] = useState(false);
+  const [retroSigned, setRetroSigned] = useState(false);
   const [showFueraTurnoModal, setShowFueraTurnoModal] = useState(false);
   const [fueraTurnoAccepted, setFueraTurnoAccepted] = useState(false);
+  const [fueraTurnoSigned, setFueraTurnoSigned] = useState(false);
   const [fueraTurnoInfo, setFueraTurnoInfo] = useState({ currentTime: "", shiftLetter: "-", horarioPrevisto: "" });
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [historyRegistros, setHistoryRegistros] = useState([]);
-  const [historyFrom, setHistoryFrom] = useState("");
-  const [historyTo, setHistoryTo] = useState("");
-  const [submittingFichaje, setSubmittingFichaje] = useState(false);
-
   const signCanvasRef = useRef(null);
   const retroCanvasRef = useRef(null);
   const fueraTurnoCanvasRef = useRef(null);
-  const sign = useSignaturePad(signCanvasRef);
-  const retroSign = useSignaturePad(retroCanvasRef);
-  const fueraTurnoSign = useSignaturePad(fueraTurnoCanvasRef);
-
+  const isDrawingRef = useRef(false);
+  const isRetroDrawingRef = useRef(false);
+  const isFueraTurnoDrawingRef = useRef(false);
   const isAdmin = userProfile.role === "admin";
+
   const TOLERANCE_MIN = 30;
   const DAY_KEYS = ["D","L","M","X","J","V","S"];
   const toMins = (t) => { const [h,m] = t.split(":").map(Number); return h*60+m; };
 
-  // FIX #3: cargar registros del día actual al montar
-  useEffect(() => {
-    if (isAdmin || !fbReady() || !userProfile.uid) { setLoadingRegistros(false); return; }
-    const unsub = fb().firestore().collection("registros_horarios")
-      .where("userId", "==", userProfile.uid)
-      .where("date", "==", selectedDate)
-      .onSnapshot(snap => {
-        setRegistros(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setLoadingRegistros(false);
-      }, err => { console.error("registros sync:", err); setLoadingRegistros(false); });
-    return () => unsub();
-  }, [isAdmin, userProfile.uid, selectedDate]);
-
-  // FIX #5: para empleados pastry/limpiadora, getEffectiveSlot usa pastryTemplate
-  const getEffectiveSlot = (emp, dateStr) => {
-    const d = parseLocalDate(dateStr);
-    if (!d) return null;
-    const dayKey = DAY_KEYS[d.getDay()];
-    if (rotationConfig?.assignments?.[emp.id] !== undefined) {
-      const sl = getCurrentShift(emp.id, d, rotationConfig);
-      return sl ? shiftTemplates?.[sl]?.[dayKey] : null;
-    }
-    if (emp.shiftType === "pastry" && pastryTemplate) return pastryTemplate[dayKey];
-    return null;
-  };
-
-  const getScheduledCandidates = (type, slot) => {
+  const getScheduledCandidates = (type, shiftLetter, dateStr) => {
+    if (!shiftTemplates || !shiftLetter) return [];
+    const d = new Date(dateStr + "T12:00:00");
+    const slot = shiftTemplates[shiftLetter]?.[DAY_KEYS[d.getDay()]];
     if (!slot) return [];
     return (type === "entrada" ? [slot.m1, slot.t1] : [slot.m2, slot.t2]).filter(Boolean);
   };
@@ -1498,188 +1248,152 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
     return bestDiff <= TOLERANCE_MIN ? best : null;
   };
 
-  const getShiftLabel = (emp, dateStr) => {
-    if (rotationConfig?.assignments?.[emp.id] !== undefined) {
-      return getCurrentShift(emp.id, parseLocalDate(dateStr), rotationConfig) || "-";
-    }
-    if (emp.shiftType === "pastry") return "PA";
-    return "-";
+  const getCanvasPos = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    if (e.touches) return { x: (e.touches[0].clientX - rect.left) * sx, y: (e.touches[0].clientY - rect.top) * sy };
+    return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
   };
 
+  const startDrawing = (e) => { e.preventDefault(); const ctx = signCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, signCanvasRef.current); ctx.beginPath(); ctx.moveTo(p.x, p.y); isDrawingRef.current = true; setHasSigned(true); };
+  const draw = (e) => { e.preventDefault(); if (!isDrawingRef.current) return; const ctx = signCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, signCanvasRef.current); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222"; ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const stopDrawing = () => { isDrawingRef.current = false; };
+  const clearSignature = () => { signCanvasRef.current.getContext("2d").clearRect(0, 0, 300, 150); setHasSigned(false); };
+
+  const startRetroDrawing = (e) => { e.preventDefault(); const ctx = retroCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, retroCanvasRef.current); ctx.beginPath(); ctx.moveTo(p.x, p.y); isRetroDrawingRef.current = true; setRetroSigned(true); };
+  const drawRetro = (e) => { e.preventDefault(); if (!isRetroDrawingRef.current) return; const ctx = retroCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, retroCanvasRef.current); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222"; ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const stopRetroDrawing = () => { isRetroDrawingRef.current = false; };
+  const clearRetroSignature = () => { retroCanvasRef.current.getContext("2d").clearRect(0, 0, 300, 120); setRetroSigned(false); };
+
+  const startFueraTurnoDrawing = (e) => { e.preventDefault(); const ctx = fueraTurnoCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, fueraTurnoCanvasRef.current); ctx.beginPath(); ctx.moveTo(p.x, p.y); isFueraTurnoDrawingRef.current = true; setFueraTurnoSigned(true); };
+  const drawFueraTurno = (e) => { e.preventDefault(); if (!isFueraTurnoDrawingRef.current) return; const ctx = fueraTurnoCanvasRef.current.getContext("2d"); const p = getCanvasPos(e, fueraTurnoCanvasRef.current); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#222"; ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const stopFueraTurnoDrawing = () => { isFueraTurnoDrawingRef.current = false; };
+  const clearFueraTurnoSignature = () => { fueraTurnoCanvasRef.current.getContext("2d").clearRect(0, 0, 300, 120); setFueraTurnoSigned(false); };
+
   const handleFichar = (type) => {
-    if (!userProfile.linkedEmployeeId) {
-      showNotification("Tu usuario no está vinculado a un empleado. Pide al administrador que lo vincule.", "error");
-      return;
-    }
-    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
-    if (!linkedEmp) { showNotification("Empleado no encontrado", "error"); return; }
     const now = new Date();
     const time = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-    const slot = getEffectiveSlot(linkedEmp, selectedDate);
-    const candidates = getScheduledCandidates(type, slot);
-    const scheduledTime = findClosestScheduled(time, candidates);
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const isInRotation = linkedEmp && rotationConfig?.assignments?.[linkedEmp.id] !== undefined;
     setPendingFicharType(type);
-    if (slot && !scheduledTime) {
-      // FIX #5: aplicable también a panaderos
-      const entradas = slot ? [slot.m1, slot.t1].filter(Boolean) : [];
-      const salidas = slot ? [slot.m2, slot.t2].filter(Boolean) : [];
-      const horarioPrevisto = slot ? `Entrada: ${entradas.join(" / ")} · Salida: ${salidas.join(" / ")}` : "Día libre según tu turno";
-      setFueraTurnoInfo({ currentTime: time, shiftLetter: getShiftLabel(linkedEmp, selectedDate), horarioPrevisto });
-      setFueraTurnoAccepted(false); fueraTurnoSign.reset();
-      setShowFueraTurnoModal(true);
-      return;
+    if (isInRotation) {
+      const shiftLetter = getCurrentShift(linkedEmp.id, selectedDate, rotationConfig);
+      const candidates = getScheduledCandidates(type, shiftLetter, selectedDate);
+      const scheduledTime = findClosestScheduled(time, candidates);
+      if (!scheduledTime) {
+        const d = new Date(selectedDate + "T12:00:00");
+        const slot = shiftLetter ? shiftTemplates?.[shiftLetter]?.[DAY_KEYS[d.getDay()]] : null;
+        const entradas = slot ? [slot.m1, slot.t1].filter(Boolean) : [];
+        const salidas = slot ? [slot.m2, slot.t2].filter(Boolean) : [];
+        const horarioPrevisto = slot ? `Entrada: ${entradas.join(" / ")} · Salida: ${salidas.join(" / ")}` : "Día libre según tu turno";
+        setFueraTurnoInfo({ currentTime: time, shiftLetter: shiftLetter || "-", horarioPrevisto });
+        setFueraTurnoAccepted(false); setFueraTurnoSigned(false); isFueraTurnoDrawingRef.current = false;
+        setShowFueraTurnoModal(true);
+        return;
+      }
     }
-    if (!slot) {
-      // Día libre o empleado sin horario definido
-      setFueraTurnoInfo({ currentTime: time, shiftLetter: getShiftLabel(linkedEmp, selectedDate), horarioPrevisto: "Día libre según tu turno" });
-      setFueraTurnoAccepted(false); fueraTurnoSign.reset();
-      setShowFueraTurnoModal(true);
-      return;
-    }
-    sign.reset();
-    setShowSignModal(true);
+    setHasSigned(false); isDrawingRef.current = false; setShowSignModal(true);
   };
 
   const handleConfirmFichar = async () => {
-    if (submittingFichaje) return;
-    if (!sign.hasSigned) { showNotification("Por favor, firma antes de fichar", "warning"); return; }
-    setSubmittingFichaje(true);
+    if (!hasSigned) { alert("Por favor, firma antes de fichar"); return; }
+    const signature = signCanvasRef.current.toDataURL("image/png");
+    const now = new Date();
+    const time = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
+    const shiftLetter = linkedEmp ? getCurrentShift(linkedEmp.id, selectedDate, rotationConfig) : null;
+    const candidates = getScheduledCandidates(pendingFicharType, shiftLetter, selectedDate);
+    const scheduledTime = findClosestScheduled(time, candidates);
+    const registro = { userId: userProfile.uid, employeeName, date: selectedDate, type: pendingFicharType, time, timestamp: now.toISOString(), signature, ...(scheduledTime ? { scheduledTime, withinTolerance: true } : {}) };
     try {
-      const signature = canvasToCompressed(signCanvasRef.current);
-      const now = new Date();
-      const time = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-      const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
-      const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
-      const slot = getEffectiveSlot(linkedEmp, selectedDate);
-      const candidates = getScheduledCandidates(pendingFicharType, slot);
-      const scheduledTime = findClosestScheduled(time, candidates);
-      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: selectedDate, type: pendingFicharType, time, timestamp: now.toISOString(), ...(scheduledTime ? { scheduledTime, withinTolerance: true } : {}) };
-      const integrityHash = await digestRecord({ ...base, signatureHashOf: "raw" });
-      const registro = { ...base, signature, integrityHash };
       await fb().firestore().collection("registros_horarios").add(registro);
+      setRegistros(r => [...r, { id: Date.now(), ...registro }]);
       setShowSignModal(false); setPendingFicharType(null);
-      showNotification(`${pendingFicharType === "entrada" ? "Entrada" : "Salida"} registrada a las ${time}`);
-    } catch (e) { showNotification("Error al guardar: " + e.message, "error"); }
-    setSubmittingFichaje(false);
+    } catch (e) { alert("Error al guardar: " + e.message); }
   };
 
   const handleConfirmFueraTurno = async () => {
-    if (submittingFichaje) return;
-    if (!fueraTurnoAccepted) { showNotification("Debes aceptar la declaración de responsabilidad", "warning"); return; }
-    if (!fueraTurnoSign.hasSigned) { showNotification("Por favor, firma la declaración", "warning"); return; }
-    setSubmittingFichaje(true);
+    if (!fueraTurnoAccepted) { alert("Debes aceptar la declaración de responsabilidad"); return; }
+    if (!fueraTurnoSigned) { alert("Por favor, firma la declaración"); return; }
+    const signature = fueraTurnoCanvasRef.current.toDataURL("image/png");
+    const now = new Date();
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
+    const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber fichado ${pendingFicharType} a las ${fueraTurnoInfo.currentTime}h fuera del horario establecido. Turno asignado ${fueraTurnoInfo.shiftLetter}: ${fueraTurnoInfo.horarioPrevisto}. La empresa no tiene responsabilidad al respecto.`;
+    const registro = { userId: userProfile.uid, employeeName, date: selectedDate, type: pendingFicharType, time: fueraTurnoInfo.currentTime, timestamp: now.toISOString(), signature, fueraTolerancia: true, declaracionFueraTurno: textoDeclaracion };
     try {
-      const signature = canvasToCompressed(fueraTurnoCanvasRef.current);
-      const now = new Date();
-      const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
-      const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
-      const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber fichado ${pendingFicharType} a las ${fueraTurnoInfo.currentTime}h fuera del horario establecido. Turno asignado ${fueraTurnoInfo.shiftLetter}: ${fueraTurnoInfo.horarioPrevisto}. La empresa no tiene responsabilidad al respecto.`;
-      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: selectedDate, type: pendingFicharType, time: fueraTurnoInfo.currentTime, timestamp: now.toISOString(), fueraTolerancia: true, declaracionFueraTurno: textoDeclaracion };
-      const integrityHash = await digestRecord(base);
-      const registro = { ...base, signature, integrityHash };
       await fb().firestore().collection("registros_horarios").add(registro);
+      setRegistros(r => [...r, { id: Date.now(), ...registro }]);
       setShowFueraTurnoModal(false);
-      showNotification("Fichaje fuera de horario registrado");
-    } catch (e) { showNotification("Error al guardar: " + e.message, "error"); }
-    setSubmittingFichaje(false);
+    } catch (e) { alert("Error al guardar: " + e.message); }
   };
 
-  const handleOpenRetro = () => { setRetroDate(""); setRetroTime("08:00"); setRetroType("entrada"); setRetroAccepted(false); retroSign.reset(); setShowRetroModal(true); };
+  const handleOpenRetro = () => { setRetroDate(""); setRetroTime("08:00"); setRetroType("entrada"); setRetroAccepted(false); setRetroSigned(false); isRetroDrawingRef.current = false; setShowRetroModal(true); };
 
   const handleConfirmRetro = async () => {
-    if (submittingFichaje) return;
-    if (!retroDate) { showNotification("Selecciona la fecha", "warning"); return; }
-    if (!retroTime) { showNotification("Indica la hora del fichaje", "warning"); return; }
-    if (!retroAccepted) { showNotification("Debes aceptar la declaración de responsabilidad", "warning"); return; }
-    if (!retroSign.hasSigned) { showNotification("Por favor, firma la declaración", "warning"); return; }
-    setSubmittingFichaje(true);
+    if (!retroDate) { alert("Selecciona la fecha"); return; }
+    if (!retroTime) { alert("Indica la hora del fichaje"); return; }
+    if (!retroAccepted) { alert("Debes aceptar la declaración de responsabilidad"); return; }
+    if (!retroSigned) { alert("Por favor, firma la declaración"); return; }
+    const signature = retroCanvasRef.current.toDataURL("image/png");
+    const now = new Date();
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
+    const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber olvidado registrar el fichaje de ${retroType} del día ${retroDate} a las ${retroTime}h. El olvido fue por causa propia y la empresa no tiene responsabilidad al respecto.`;
+    const registro = { userId: userProfile.uid, employeeName, date: retroDate, type: retroType, time: retroTime, timestamp: now.toISOString(), signature, retroactivo: true, declaracionResponsabilidad: true, fechaFichaje: now.toISOString(), textoDeclaracion };
     try {
-      const signature = canvasToCompressed(retroCanvasRef.current);
-      const now = new Date();
-      const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
-      const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
-      const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber olvidado registrar el fichaje de ${retroType} del día ${retroDate} a las ${retroTime}h. El olvido fue por causa propia y la empresa no tiene responsabilidad al respecto.`;
-      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: retroDate, type: retroType, time: retroTime, timestamp: now.toISOString(), retroactivo: true, declaracionResponsabilidad: true, fechaFichaje: now.toISOString(), textoDeclaracion };
-      const integrityHash = await digestRecord(base);
-      const registro = { ...base, signature, integrityHash };
       await fb().firestore().collection("registros_horarios").add(registro);
+      setRegistros(r => [...r, { id: Date.now(), ...registro }]);
       setShowRetroModal(false);
-      showNotification("Fichaje retroactivo registrado");
-    } catch (e) { showNotification("Error al guardar: " + e.message, "error"); }
-    setSubmittingFichaje(false);
+    } catch (e) { alert("Error al guardar: " + e.message); }
   };
 
-  // FIX #30: filename del CSV con rango real
-  const downloadCSV = (records, fromDate, toDate) => {
-    const header = "Fecha;Empleado;Tipo;Hora Real;Hora Turno;Dentro Tolerancia;Retroactivo;Decl. Responsabilidad;Con Firma;Hash Integridad;Timestamp\n";
-    const rows = records.map(r => `${r.date};${r.employeeName};${r.type};${r.time};${r.scheduledTime||""};${r.withinTolerance?"Sí":"No"};${r.retroactivo?"Sí":"No"};${r.declaracionResponsabilidad||r.declaracionFueraTurno?"Sí":"No"};${r.signature?"Sí":"No"};${r.integrityHash||""};${r.timestamp}`).join("\n");
-    const blob = new Blob(["﻿" + header + rows], { type: "text/csv;charset=utf-8;" });
+  const downloadCSV = (records) => {
+    const header = "Fecha;Empleado;Tipo;Hora Real;Hora Turno;Dentro Tolerancia;Retroactivo;Decl. Responsabilidad;Con Firma;Timestamp\n";
+    const rows = records.map(r => `${r.date};${r.employeeName};${r.type};${r.time};${r.scheduledTime||""};${r.withinTolerance?"Sí":"No"};${r.retroactivo?"Sí":"No"};${r.declaracionResponsabilidad?"Sí":"No"};${r.signature?"Sí":"No"};${r.timestamp}`).join("\n");
+    const blob = new Blob(["\ufeff" + header + rows], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `registro_horario_${fromDate||"x"}_${toDate||"x"}.csv`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `registro_horario_${selectedDate}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleAdminSearch = async () => {
-    if (!dateFrom || !dateTo) { showNotification("Por favor selecciona ambas fechas", "warning"); return; }
+    if (!dateFrom || !dateTo) { alert("Por favor selecciona ambas fechas"); return; }
     setAdminSearched(true);
     try {
       const snap = await fb().firestore().collection("registros_horarios").where("date",">=",dateFrom).where("date","<=",dateTo).get();
       let results = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (selectedEmployee) results = results.filter(r => r.employeeName === selectedEmployee);
-      results.sort((a,b) => (a.timestamp||"").localeCompare(b.timestamp||""));
       setAdminRegistros(results);
-    } catch (e) { showNotification("Error al buscar: " + e.message, "error"); }
+    } catch (e) { alert("Error al buscar: " + e.message); }
   };
 
-  // FIX #47: histórico para empleado
-  const handleOpenHistory = () => {
-    const today = new Date();
-    const last30 = new Date(today); last30.setDate(today.getDate() - 30);
-    setHistoryFrom(toLocalDateStr(last30));
-    setHistoryTo(toLocalDateStr(today));
-    setHistoryRegistros([]);
-    setShowHistoryModal(true);
-  };
-  const handleHistorySearch = async () => {
-    if (!historyFrom || !historyTo) return;
-    try {
-      const snap = await fb().firestore().collection("registros_horarios")
-        .where("userId","==",userProfile.uid)
-        .where("date",">=",historyFrom)
-        .where("date","<=",historyTo)
-        .get();
-      const results = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp||"").localeCompare(a.timestamp||""));
-      setHistoryRegistros(results);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-
-  const dayRegistros = registros;
-  const retroMinDate = (() => { const d = new Date(); d.setDate(d.getDate()-7); return toLocalDateStr(d); })();
-  const retroMaxDate = (() => { const d = new Date(); d.setDate(d.getDate()-1); return toLocalDateStr(d); })();
+  const dayRegistros = registros.filter(r => r.date === selectedDate);
+  const retroMinDate = (() => { const d = new Date(); d.setDate(d.getDate()-7); return d.toISOString().split("T")[0]; })();
+  const retroMaxDate = (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().split("T")[0]; })();
   const linkedEmpName = (() => { const e = employees.find(emp => emp.id === userProfile.linkedEmployeeId); return e ? e.name : userProfile.name; })();
 
   return (
     <div className="container">
       <h2>Fichar (Registro Horario)</h2>
       <div className="card" style={{ background: "#FFF8E1", borderLeft: "4px solid #FF9800", marginBottom: "16px" }}>
-        <p style={{ fontSize: "12px", color: "#E65100", margin: "0" }}>Registro horario conforme al Real Decreto-ley 8/2019. Conservación: 4 años.</p>
+        <p style={{ fontSize: "12px", color: "#E65100", margin: "0" }}>Registro horario conforme al Real Decreto-ley 8/2019</p>
       </div>
       {!isAdmin ? (
         <>
           <div className="card"><label style={{ marginBottom: "12px", display: "block", fontWeight: "600" }}>Fecha (Hoy)</label><input type="date" className="input" value={selectedDate} disabled /></div>
-          <button className="fichar-btn fichar-entrada" onClick={() => handleFichar("entrada")} disabled={submittingFichaje}>⬆️ Fichar Entrada</button>
-          <button className="fichar-btn fichar-salida" onClick={() => handleFichar("salida")} disabled={submittingFichaje}>⬇️ Fichar Salida</button>
-          <button className="fichar-btn" style={{ background: "#FF9800", color: "white" }} onClick={handleOpenRetro} disabled={submittingFichaje}>📅 Fichar Día Anterior</button>
-          <button className="fichar-btn" style={{ background: "#2196F3", color: "white" }} onClick={handleOpenHistory}>📜 Ver mi histórico</button>
+          <button className="fichar-btn fichar-entrada" onClick={() => handleFichar("entrada")}>⬆️ Fichar Entrada</button>
+          <button className="fichar-btn fichar-salida" onClick={() => handleFichar("salida")}>⬇️ Fichar Salida</button>
+          <button className="fichar-btn" style={{ background: "#FF9800", color: "white" }} onClick={handleOpenRetro}>📅 Fichar Día Anterior</button>
           <div className="card">
             <h3 style={{ marginBottom: "12px" }}>Registros del día</h3>
-            {loadingRegistros ? <p style={{ color: "#999" }}>Cargando...</p> : dayRegistros.length === 0 ? <p style={{ color: "#999" }}>No hay registros para esta fecha</p> : [...dayRegistros].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(r => (
+            {dayRegistros.length === 0 ? <p style={{ color: "#999" }}>No hay registros para esta fecha</p> : dayRegistros.map(r => (
               <div key={r.id} className="registro-card" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 <strong>{r.type === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</strong>
                 <span>{r.time}</span>
                 {r.scheduledTime && <span style={{ fontSize: "11px", color: "#2E7D32", background: "#E8F5E9", padding: "2px 6px", borderRadius: "10px" }}>Turno: {r.scheduledTime}</span>}
                 {r.retroactivo && <span style={{ fontSize: "11px", color: "#E65100", background: "#FFF3E0", padding: "2px 6px", borderRadius: "10px" }}>📅 Retroactivo</span>}
-                {r.fueraTolerancia && <span style={{ fontSize: "11px", color: "#C62828", background: "#FFCDD2", padding: "2px 6px", borderRadius: "10px" }}>⚠️ Fuera</span>}
                 {r.signature && <img src={r.signature} alt="firma" className="firma-img" onClick={() => setViewSignature(r.signature)} title="Ver firma" />}
               </div>
             ))}
@@ -1690,7 +1404,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
           <div className="card">
             <h3 style={{ marginBottom: "16px" }}>Registros Horarios</h3>
             <div className="form-group"><label>Desde</label><input type="date" className="input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
-            <div className="form-group"><label>Hasta</label><input type="date" className="input" value={dateTo} min={dateFrom} onChange={e => setDateTo(e.target.value)} /></div>
+            <div className="form-group"><label>Hasta</label><input type="date" className="input" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
             <div className="form-group"><label>Empleado (opcional)</label>
               <select className="input" value={selectedEmployee || ""} onChange={e => setSelectedEmployee(e.target.value || null)}>
                 <option value="">Todos</option>{employees.map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
@@ -1733,7 +1447,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
                       ))}</tbody>
                     </table>
                   </div>
-                  <button className="btn btn-secondary" onClick={() => downloadCSV(adminRegistros, dateFrom, dateTo)} style={{ width: "100%" }}>Descargar CSV</button>
+                  <button className="btn btn-secondary" onClick={() => downloadCSV(adminRegistros)} style={{ width: "100%" }}>Descargar CSV</button>
                 </>
               )}
             </div>
@@ -1744,7 +1458,10 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       {showFueraTurnoModal && (
         <div className="modal">
           <div className="modal-content">
-            <div className="modal-header"><span>⚠️ Fichaje Fuera de Horario</span><button className="modal-close" onClick={() => setShowFueraTurnoModal(false)}>×</button></div>
+            <div className="modal-header">
+              <span>⚠️ Fichaje Fuera de Horario</span>
+              <button className="modal-close" onClick={() => setShowFueraTurnoModal(false)}>×</button>
+            </div>
             <div style={{ background: "#FFCDD2", border: "1px solid #E57373", borderRadius: "8px", padding: "12px", marginBottom: "12px", fontSize: "12px", color: "#B71C1C", lineHeight: "1.6" }}>
               <strong>⚠️ Estás fichando fuera de tu horario establecido</strong><br /><br />
               Tu turno hoy (Turno <strong>{fueraTurnoInfo.shiftLetter}</strong>): {fueraTurnoInfo.horarioPrevisto}<br />
@@ -1759,10 +1476,22 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
               Acepto la declaración anterior y firmo este documento
             </label>
             <p style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Firma con el dedo o el ratón:</p>
-            <canvas ref={fueraTurnoCanvasRef} width={300} height={120} className="signature-canvas" {...fueraTurnoSign.handlers} />
+            <canvas
+              ref={fueraTurnoCanvasRef}
+              width={300}
+              height={120}
+              className="signature-canvas"
+              onMouseDown={startFueraTurnoDrawing}
+              onMouseMove={drawFueraTurno}
+              onMouseUp={stopFueraTurnoDrawing}
+              onMouseLeave={stopFueraTurnoDrawing}
+              onTouchStart={startFueraTurnoDrawing}
+              onTouchMove={drawFueraTurno}
+              onTouchEnd={stopFueraTurnoDrawing}
+            />
             <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={fueraTurnoSign.clear}>Limpiar firma</button>
-              <button className="btn btn-danger btn-sm" style={{ flex: 2 }} onClick={handleConfirmFueraTurno} disabled={!fueraTurnoAccepted || !fueraTurnoSign.hasSigned || submittingFichaje}>
+              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={clearFueraTurnoSignature}>Limpiar firma</button>
+              <button className="btn btn-danger btn-sm" style={{ flex: 2 }} onClick={handleConfirmFueraTurno} disabled={!fueraTurnoAccepted || !fueraTurnoSigned}>
                 Registrar {pendingFicharType === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}
               </button>
             </div>
@@ -1773,12 +1502,27 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       {showSignModal && (
         <div className="modal">
           <div className="modal-content">
-            <div className="modal-header"><span>Firma — {pendingFicharType === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</span><button className="modal-close" onClick={() => setShowSignModal(false)}>×</button></div>
+            <div className="modal-header">
+              <span>Firma — {pendingFicharType === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</span>
+              <button className="modal-close" onClick={() => setShowSignModal(false)}>×</button>
+            </div>
             <p style={{ fontSize: "13px", color: "#666", marginBottom: "12px" }}>Firma con el dedo o el ratón en el recuadro</p>
-            <canvas ref={signCanvasRef} width={300} height={150} className="signature-canvas" {...sign.handlers} />
+            <canvas
+              ref={signCanvasRef}
+              width={300}
+              height={150}
+              className="signature-canvas"
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+              onTouchStart={startDrawing}
+              onTouchMove={draw}
+              onTouchEnd={stopDrawing}
+            />
             <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={sign.clear}>Limpiar</button>
-              <button className="btn btn-primary btn-sm" style={{ flex: 2 }} onClick={handleConfirmFichar} disabled={!sign.hasSigned || submittingFichaje}>
+              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={clearSignature}>Limpiar</button>
+              <button className="btn btn-primary btn-sm" style={{ flex: 2 }} onClick={handleConfirmFichar} disabled={!hasSigned}>
                 Confirmar {pendingFicharType === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}
               </button>
             </div>
@@ -1789,14 +1533,25 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       {showRetroModal && (
         <div className="modal">
           <div className="modal-content">
-            <div className="modal-header"><span>📅 Fichaje Día Anterior</span><button className="modal-close" onClick={() => setShowRetroModal(false)}>×</button></div>
-            <div className="form-group"><label>Fecha del fichaje olvidado</label><input type="date" className="input" value={retroDate} min={retroMinDate} max={retroMaxDate} onChange={e => setRetroDate(e.target.value)} /></div>
-            <div className="form-group"><label>Tipo de fichaje</label>
+            <div className="modal-header">
+              <span>📅 Fichaje Día Anterior</span>
+              <button className="modal-close" onClick={() => setShowRetroModal(false)}>×</button>
+            </div>
+            <div className="form-group">
+              <label>Fecha del fichaje olvidado</label>
+              <input type="date" className="input" value={retroDate} min={retroMinDate} max={retroMaxDate} onChange={e => setRetroDate(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Tipo de fichaje</label>
               <select className="input" value={retroType} onChange={e => setRetroType(e.target.value)}>
-                <option value="entrada">⬆️ Entrada</option><option value="salida">⬇️ Salida</option>
+                <option value="entrada">⬆️ Entrada</option>
+                <option value="salida">⬇️ Salida</option>
               </select>
             </div>
-            <div className="form-group"><label>Hora real del fichaje</label><input type="time" className="input" value={retroTime} onChange={e => setRetroTime(e.target.value)} /></div>
+            <div className="form-group">
+              <label>Hora real del fichaje</label>
+              <input type="time" className="input" value={retroTime} onChange={e => setRetroTime(e.target.value)} />
+            </div>
             <div style={{ background: "#FFF3E0", border: "1px solid #FF9800", borderRadius: "8px", padding: "12px", marginBottom: "12px", fontSize: "12px", color: "#5D4037", lineHeight: "1.6" }}>
               <strong>Declaración de responsabilidad:</strong><br /><br />
               Yo, <em>{linkedEmpName}</em>, declaro bajo mi responsabilidad haber olvidado registrar el fichaje de <strong>{retroType}</strong> del día <strong>{retroDate || "..."}</strong> a las <strong>{retroTime || "..."}</strong> horas. Asumo que el olvido del fichaje fue por causa propia y que la empresa no tiene ninguna responsabilidad al respecto.
@@ -1806,37 +1561,25 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
               Acepto la declaración anterior y firmo este documento
             </label>
             <p style={{ fontSize: "12px", color: "#666", marginBottom: "8px" }}>Firma con el dedo o el ratón:</p>
-            <canvas ref={retroCanvasRef} width={300} height={120} className="signature-canvas" {...retroSign.handlers} />
+            <canvas
+              ref={retroCanvasRef}
+              width={300}
+              height={120}
+              className="signature-canvas"
+              onMouseDown={startRetroDrawing}
+              onMouseMove={drawRetro}
+              onMouseUp={stopRetroDrawing}
+              onMouseLeave={stopRetroDrawing}
+              onTouchStart={startRetroDrawing}
+              onTouchMove={drawRetro}
+              onTouchEnd={stopRetroDrawing}
+            />
             <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={retroSign.clear}>Limpiar firma</button>
-              <button className="btn btn-primary btn-sm" style={{ flex: 2 }} onClick={handleConfirmRetro} disabled={!retroAccepted || !retroSign.hasSigned || submittingFichaje}>Registrar fichaje</button>
+              <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={clearRetroSignature}>Limpiar firma</button>
+              <button className="btn btn-primary btn-sm" style={{ flex: 2 }} onClick={handleConfirmRetro} disabled={!retroAccepted || !retroSigned}>
+                Registrar fichaje
+              </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {showHistoryModal && (
-        <div className="modal">
-          <div className="modal-content">
-            <div className="modal-header"><span>📜 Mi histórico de fichajes</span><button className="modal-close" onClick={() => setShowHistoryModal(false)}>×</button></div>
-            <div className="form-group"><label>Desde</label><input type="date" className="input" value={historyFrom} onChange={e => setHistoryFrom(e.target.value)} /></div>
-            <div className="form-group"><label>Hasta</label><input type="date" className="input" value={historyTo} min={historyFrom} onChange={e => setHistoryTo(e.target.value)} /></div>
-            <button className="btn btn-primary" style={{ width: "100%", marginBottom: 12 }} onClick={handleHistorySearch}>Buscar</button>
-            {historyRegistros.length === 0 ? <p style={{ color: "#999", fontSize: 13 }}>No hay registros (busca para cargar)</p> : (
-              <>
-                <div style={{ maxHeight: 300, overflowY: "auto" }}>
-                  {historyRegistros.map(r => (
-                    <div key={r.id} className="registro-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                      <span style={{ fontWeight: 600 }}>{r.date}</span>
-                      <span>{r.type === "entrada" ? "⬆️" : "⬇️"} {r.time}</span>
-                      {r.retroactivo && <span style={{ fontSize: 10, background: "#FFE0B2", color: "#E65100", padding: "1px 5px", borderRadius: 6 }}>Retro</span>}
-                      {r.fueraTolerancia && <span style={{ fontSize: 10, background: "#FFCDD2", color: "#C62828", padding: "1px 5px", borderRadius: 6 }}>Fuera</span>}
-                    </div>
-                  ))}
-                </div>
-                <button className="btn btn-secondary btn-sm" style={{ width: "100%", marginTop: 12 }} onClick={() => downloadCSV(historyRegistros, historyFrom, historyTo)}>Descargar mi histórico CSV</button>
-              </>
-            )}
           </div>
         </div>
       )}
@@ -1853,50 +1596,28 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
   );
 }
 
-// FIX #1, #2: ShiftConfig persiste en shiftConfig/templates Y notifica al padre (con setShiftTemplates)
-function ShiftConfigScreen({ shiftTemplates, setShiftTemplates, pastryTemplate, setPastryTemplate, rotationConfig }) {
+function ShiftConfigScreen({ shiftTemplates, rotationConfig }) {
   const [templates, setTemplates] = useState(shiftTemplates);
-  const [pastry, setPastry] = useState(pastryTemplate);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const days = ["L","M","X","J","V","S","D"];
   const dayLabels = ["Lun","Mar","Mié","Jue","Vie","Sab","Dom"];
   const updateTime = (shift, day, field, value) => {
     const updated = JSON.parse(JSON.stringify(templates));
-    if (!updated[shift][day]) updated[shift][day] = { m1: null, m2: null, t1: null, t2: null };
+    if (!updated[shift][day]) updated[shift][day] = {};
     updated[shift][day][field] = value || null;
     setTemplates(updated);
   };
-  const updatePastryTime = (day, field, value) => {
-    const updated = JSON.parse(JSON.stringify(pastry));
-    if (!updated[day]) updated[day] = { m1: null, m2: null, t1: null, t2: null };
-    updated[day][field] = value || null;
-    setPastry(updated);
-  };
-  const togglePastryDay = (day) => {
-    const updated = JSON.parse(JSON.stringify(pastry));
-    updated[day] = updated[day] === null ? { m1: "05:00", m2: "13:00", t1: null, t2: null } : null;
-    setPastry(updated);
-  };
   const handleSave = async () => {
-    setSaving(true);
     try {
-      await fb().firestore().collection("shiftConfig").doc("templates").set({ templates, pastry });
+      await fb().firestore().collection("shiftConfig").doc("templates").set({ templates });
       await fb().firestore().collection("shiftConfig").doc("rotation").set(rotationConfig);
-      setShiftTemplates(templates);
-      setPastryTemplate(pastry);
-      safeLocalSet("pardilla_shift_templates", templates);
-      safeLocalSet("pardilla_pastry_template", pastry);
-      setSaved(true); setTimeout(() => setSaved(false), 3000);
-    } catch (e) { alert("Error al guardar: " + e.message); }
-    setSaving(false);
+      alert("Configuración de turnos guardada");
+    } catch (e) { console.error(e); }
   };
   return (
     <div className="container">
       <h2>Configurar Turnos</h2>
-      {saved && <div className="success-message">Configuración guardada correctamente</div>}
       <div className="card" style={{ marginTop: "20px" }}>
-        <h3>Plantillas de Turnos (Tienda A/B/C)</h3>
+        <h3>Plantillas de Turnos</h3>
         {["A","B","C"].map(shift => (
           <div key={shift} style={{ marginBottom: "24px" }}>
             <h4 style={{ marginBottom: "12px" }}>Turno {shift}</h4>
@@ -1917,44 +1638,15 @@ function ShiftConfigScreen({ shiftTemplates, setShiftTemplates, pastryTemplate, 
           </div>
         ))}
       </div>
-
-      <div className="card">
-        <h3>Plantilla Obrador (panaderos / pastelería)</h3>
-        <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Aplicada a empleados con tipo "pastry" que no rotan A/B/C.</p>
-        <div className="shift-editor-grid">
-          <div className="shift-cell header">Día</div>
-          {dayLabels.map(label => <div key={label} className="shift-cell header">{label}</div>)}
-          <div className="shift-cell header" style={{ textAlign: "left" }}>Activo</div>
-          {days.map(day => (
-            <div key={`pa-active-${day}`} className="shift-cell">
-              <input type="checkbox" checked={pastry[day] !== null && pastry[day] !== undefined} onChange={() => togglePastryDay(day)} />
-            </div>
-          ))}
-          {["m1","m2","t1","t2"].map(field => (
-            <div key={`pa-${field}`} style={{ display: "contents" }}>
-              <div className="shift-cell header" style={{ textAlign: "left" }}>{field === "m1" ? "M1" : field === "m2" ? "M2" : field === "t1" ? "T1" : "T2"}</div>
-              {days.map(day => (
-                <div key={`pa-${day}-${field}`} className="shift-cell">
-                  <input type="time" value={pastry[day]?.[field] || ""} onChange={e => updatePastryTime(day, field, e.target.value)} disabled={!pastry[day]} />
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <button className="btn btn-primary" style={{ width: "100%", marginTop: "16px" }} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar Configuración"}</button>
+      <button className="btn btn-primary" style={{ width: "100%", marginTop: "16px" }} onClick={handleSave}>Guardar Configuración</button>
     </div>
   );
 }
 
-// FIX #11: gestión robusta de la app secundaria
 function UserManagementScreen({ userProfile, employees }) {
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState({ email: "", password: "", name: "", role: "manager", linkedEmpId: null });
   const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -1964,32 +1656,22 @@ function UserManagementScreen({ userProfile, employees }) {
   };
 
   const handleCreate = async (e) => {
-    e.preventDefault(); setError(""); setSubmitting(true);
-    let secondaryApp = null;
+    e.preventDefault(); setError("");
     try {
-      const cfgStr = localStorage.getItem("pardilla_firebase_config");
-      const cfg = cfgStr ? JSON.parse(cfgStr) : (typeof FIREBASE_CONFIG_HARDCODED === "object" && FIREBASE_CONFIG_HARDCODED);
-      if (!cfg) throw new Error("Sin configuración Firebase disponible");
-      secondaryApp = fb().initializeApp(cfg, "Secondary" + Date.now());
+      const secondaryApp = fb().initializeApp(JSON.parse(localStorage.getItem("pardilla_firebase_config")), "Secondary" + Date.now());
       const cred = await secondaryApp.auth().createUserWithEmailAndPassword(form.email, form.password);
-      await fb().firestore().collection("users").doc(cred.user.uid).set({
-        uid: cred.user.uid, email: form.email, name: form.name, role: form.role,
-        linkedEmployeeId: form.role === "empleado" ? form.linkedEmpId : null,
-        createdAt: new Date().toISOString()
-      });
+      await fb().firestore().collection("users").doc(cred.user.uid).set({ uid: cred.user.uid, email: form.email, name: form.name, role: form.role, linkedEmployeeId: form.role === "empleado" ? form.linkedEmpId : null, createdAt: new Date().toISOString() });
+      await secondaryApp.delete();
       setForm({ email: "", password: "", name: "", role: "manager", linkedEmpId: null });
       loadUsers();
     } catch (e) { setError(e.message); }
-    finally {
-      if (secondaryApp) { try { await secondaryApp.delete(); } catch (e) { console.warn("secondaryApp.delete:", e); } }
-      setSubmitting(false);
-    }
   };
 
-  const doDelete = async (uid) => {
-    try { await fb().firestore().collection("users").doc(uid).delete(); loadUsers(); }
-    catch (e) { console.error(e); }
-    setConfirmDelete(null);
+  const handleDelete = async (uid) => {
+    if (window.confirm("¿Eliminar este usuario?")) {
+      try { await fb().firestore().collection("users").doc(uid).delete(); loadUsers(); }
+      catch (e) { console.error(e); }
+    }
   };
 
   return (
@@ -2001,7 +1683,7 @@ function UserManagementScreen({ userProfile, employees }) {
           {error && <div className="error-message">{error}</div>}
           <div className="form-group"><label>Nombre</label><input type="text" className="input" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required /></div>
           <div className="form-group"><label>Email</label><input type="email" className="input" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} required /></div>
-          <div className="form-group"><label>Contraseña</label><input type="password" className="input" value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required minLength={6} /></div>
+          <div className="form-group"><label>Contraseña</label><input type="password" className="input" value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required /></div>
           <div className="form-group"><label>Rol</label>
             <select className="input" value={form.role} onChange={e => setForm(f => ({...f, role: e.target.value}))}>
               <option value="admin">Administrador</option><option value="manager">Gestor</option><option value="empleado">Empleado</option>
@@ -2014,7 +1696,7 @@ function UserManagementScreen({ userProfile, employees }) {
               </select>
             </div>
           )}
-          <button type="submit" className="btn btn-primary" style={{ width: "100%" }} disabled={submitting}>{submitting ? "Creando..." : "Crear Usuario"}</button>
+          <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>Crear Usuario</button>
         </form>
       </div>
       <div style={{ marginTop: "20px" }}>
@@ -2024,28 +1706,18 @@ function UserManagementScreen({ userProfile, employees }) {
             <div className="info"><div className="name">{user.name}</div><div className="role">{user.email}</div></div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span className={`role-badge role-${user.role}`}>{user.role}</span>
-              {user.role === "empleado" && user.linkedEmployeeId && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#666" }}>→ {employees.find(e => e.id === user.linkedEmployeeId)?.name || "Sin asignar"}</span>}
-              {user.uid !== userProfile.uid && <button className="btn btn-sm btn-danger" onClick={() => setConfirmDelete(user)}>Eliminar</button>}
+              {user.role === "empleado" && user.linkedEmployeeId && <span style={{ marginLeft: "8px", fontSize: "12px", color: "#666" }}>→ {employees.find(e => e.id == user.linkedEmployeeId)?.name || "Sin asignar"}</span>}
+              {user.uid !== userProfile.uid && <button className="btn btn-sm btn-danger" onClick={() => handleDelete(user.uid)}>Eliminar</button>}
             </div>
           </div>
         ))}
       </div>
-      {confirmDelete && (
-        <ConfirmModal
-          title="Eliminar usuario"
-          message={`¿Eliminar a ${confirmDelete.name} (${confirmDelete.email})? Esta acción no se puede deshacer. Nota: solo elimina su acceso a la app, no su cuenta de Firebase Auth (debes hacerlo desde la consola de Firebase).`}
-          danger
-          confirmText="Sí, eliminar"
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={() => doDelete(confirmDelete.uid)}
-        />
-      )}
     </div>
   );
 }
 
 function FirebaseConfigScreen() {
-  const config = safeLocalGet("pardilla_firebase_config", {});
+  const config = JSON.parse(localStorage.getItem("pardilla_firebase_config") || "{}");
   return (
     <div className="container">
       <h2>Configuración Firebase</h2>
@@ -2055,72 +1727,36 @@ function FirebaseConfigScreen() {
         <pre style={{ background: "#f5f5f5", padding: "12px", fontSize: "11px", overflow: "auto", maxHeight: "200px", marginBottom: "12px" }}>{`const FIREBASE_CONFIG_HARDCODED = ${JSON.stringify(config, null, 2)};`}</pre>
         <button className="btn btn-secondary" onClick={() => navigator.clipboard?.writeText(`const FIREBASE_CONFIG_HARDCODED = ${JSON.stringify(config, null, 2)};`)} style={{ width: "100%" }}>Copiar Configuración</button>
       </div>
-      <div className="card" style={{ background: "#FFF3E0", border: "1px solid #FF9800" }}>
-        <h4 style={{ color: "#E65100", marginBottom: 8 }}>⚠️ Reglas de seguridad de Firestore</h4>
-        <p style={{ fontSize: 13, color: "#5D4037" }}>Antes de producción asegúrate de tener publicadas reglas que validen rol del usuario. Ejemplo mínimo:</p>
-        <pre style={{ background: "#fff", padding: 8, fontSize: 11, overflow: "auto", marginTop: 8 }}>{`rules_version='2';
-service cloud.firestore {
-  match /databases/{db}/documents {
-    function isAuth() { return request.auth != null; }
-    function role() { return get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role; }
-    match /users/{uid} {
-      allow read: if isAuth();
-      allow write: if role() == 'admin';
-    }
-    match /shiftConfig/{doc} {
-      allow read: if isAuth();
-      allow write: if role() == 'admin';
-    }
-    match /registros_horarios/{id} {
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow read: if isAuth() && (resource.data.userId == request.auth.uid || role() in ['admin','manager']);
-      allow update, delete: if false;
-    }
-    match /vacationAssignments/{id} {
-      allow read: if isAuth();
-      allow create, update: if role() in ['admin'];
-      allow delete: if role() == 'admin';
-    }
-    match /tasks/{id} {
-      allow read: if isAuth();
-      allow create, update, delete: if role() in ['admin','manager'];
-    }
-    match /ventas/{id} { allow read, write: if role() in ['admin','manager']; }
-    match /promociones/{id} { allow read, write: if role() in ['admin','manager']; }
-    match /config/{doc} { allow read: if isAuth(); allow write: if role() == 'admin'; }
-    match /employees/{id} { allow read: if isAuth(); allow write: if role() in ['admin']; }
-  }
-}`}</pre>
-      </div>
     </div>
   );
 }
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
-function EmployeeDetailModal({ employee, onClose, employees, updateEmployee, removeEmployee }) {
+
+function EmployeeDetailModal({ employee, onClose, setEmployees, employees }) {
   const [editName, setEditName] = useState(employee.name);
   const [editRole, setEditRole] = useState(employee.role);
   const [editVacationDays, setEditVacationDays] = useState(employee.vacationDays);
-  const [editShiftType, setEditShiftType] = useState(employee.shiftType || "store");
-  const [workedHolidaysMap, setWorkedHolidaysMap] = useState(() => safeLocalGet(`pardilla_wh_${employee.id}`, {}));
+  const [workedHolidaysMap, setWorkedHolidaysMap] = useState(() => { const s = localStorage.getItem(`pardilla_wh_${employee.id}`); return s ? JSON.parse(s) : {}; });
   const [showCalendar, setShowCalendar] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const totalVacation = employee.monthsWorked * 2.5 + employee.workedHolidays + editVacationDays;
 
   const handleToggle = (dateStr) => {
     const updated = { ...workedHolidaysMap, [dateStr]: !workedHolidaysMap[dateStr] };
-    setWorkedHolidaysMap(updated); safeLocalSet(`pardilla_wh_${employee.id}`, updated);
+    setWorkedHolidaysMap(updated); localStorage.setItem(`pardilla_wh_${employee.id}`, JSON.stringify(updated));
   };
 
-  const handleSave = async () => {
-    await updateEmployee({ ...employee, name: editName, role: editRole, vacationDays: editVacationDays, shiftType: editShiftType });
-    onClose();
+  const handleSave = () => {
+    const updated = employees.map(e => e.id === employee.id ? {...e, name: editName, role: editRole, vacationDays: editVacationDays} : e);
+    setEmployees(updated); localStorage.setItem("pardilla_employees", JSON.stringify(updated)); onClose();
   };
 
-  const handleDelete = async () => { await removeEmployee(employee.id); onClose(); };
-
-  // FIX #8: usar parseLocalDate y los festivos del año actual
-  const holidaysSpain = getSpainHolidays(new Date().getFullYear());
+  const handleDelete = () => {
+    if (window.confirm(`¿Eliminar a ${employee.name}? Escribe su nombre para confirmar.`)) {
+      const confirmed = window.prompt("Escribe el nombre del empleado para confirmar:");
+      if (confirmed === employee.name) { const updated = employees.filter(e => e.id !== employee.id); setEmployees(updated); localStorage.setItem("pardilla_employees", JSON.stringify(updated)); onClose(); }
+    }
+  };
 
   return (
     <div className="modal"><div className="modal-content">
@@ -2129,17 +1765,11 @@ function EmployeeDetailModal({ employee, onClose, employees, updateEmployee, rem
         <div className="stat-box"><div className="label">Meses Trabajados</div><div className="value">{employee.monthsWorked}</div></div>
         <div className="stat-box"><div className="label">Días Vacaciones</div><div className="value">{totalVacation.toFixed(1)}</div></div>
         <div className="stat-box"><div className="label">Festivos Trabajados</div><div className="value">{employee.workedHolidays}</div></div>
-        <div className="stat-box"><div className="label">Tipo Jornada</div><div className="value" style={{ fontSize: "13px" }}>{editShiftType}</div></div>
+        <div className="stat-box"><div className="label">Tipo Jornada</div><div className="value" style={{ fontSize: "13px" }}>{employee.shiftType}</div></div>
       </div>
       <div className="form-group" style={{ marginTop: "20px" }}><label>Nombre</label><input type="text" className="input" value={editName} onChange={e => setEditName(e.target.value)} /></div>
       <div className="form-group"><label>Rol</label><select className="input" value={editRole} onChange={e => setEditRole(e.target.value)}>{ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-      <div className="form-group"><label>Tipo de jornada</label>
-        <select className="input" value={editShiftType} onChange={e => setEditShiftType(e.target.value)}>
-          <option value="store">Tienda (rotación A/B/C)</option>
-          <option value="pastry">Obrador / Pastelería</option>
-        </select>
-      </div>
-      <div className="form-group"><label>Días de Vacación (ajuste manual)</label>
+      <div className="form-group"><label>Días de Vacación</label>
         <div className="vacation-control">
           <button className="vacation-btn" onClick={() => setEditVacationDays(editVacationDays - 1)}>−</button>
           <div className="vacation-value">{editVacationDays}</div>
@@ -2153,9 +1783,9 @@ function EmployeeDetailModal({ employee, onClose, employees, updateEmployee, rem
             <p style={{ fontSize: "12px", color: "#666", marginBottom: "12px" }}>Haz clic en los días para marcar como festivo trabajado</p>
             <div className="calendar-month">
               {Array.from({ length: 30 }).map((_, i) => {
-                const date = new Date(new Date().getFullYear(), 3, 1 + i);
-                const dateStr = toLocalDateStr(date);
-                const isHoliday = holidaysSpain.includes(dateStr);
+                const date = new Date(2026, 3, 1 + i);
+                const dateStr = date.toISOString().split("T")[0];
+                const isHoliday = SPAIN_HOLIDAYS_2026.includes(dateStr);
                 const isWorked = workedHolidaysMap[dateStr];
                 return <div key={i} className={`cal-day ${isHoliday ? "holiday" : ""} ${isWorked ? "worked-holiday" : ""}`} onClick={() => handleToggle(dateStr)}>{i + 1}</div>;
               })}
@@ -2164,48 +1794,27 @@ function EmployeeDetailModal({ employee, onClose, employees, updateEmployee, rem
         )}
       </div>
       <div className="modal-footer">
-        <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(true)}>Eliminar</button>
+        <button className="btn btn-danger btn-sm" onClick={handleDelete}>Eliminar</button>
         <button className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button>
         <button className="btn btn-primary btn-sm" onClick={handleSave}>Guardar</button>
       </div>
-      {confirmDelete && (
-        <ConfirmModal
-          title="Eliminar empleado"
-          message={`Vas a eliminar permanentemente a ${employee.name}. Esta acción no se puede deshacer.`}
-          danger
-          requireText={employee.name}
-          confirmText="Sí, eliminar"
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={handleDelete}
-        />
-      )}
     </div></div>
   );
 }
 
-function ProductDetailModal({ product, onClose, updateProduct }) {
+function ProductDetailModal({ product, onClose, products, setProducts }) {
   const [editPrice, setEditPrice] = useState(product.price);
-  const [error, setError] = useState("");
   const competitors = getCompetitorPrices(product);
-  const handleSave = async () => {
-    const p = parseFloat(editPrice);
-    if (!Number.isFinite(p) || p < 0) { setError("Introduce un precio válido"); return; }
-    await updateProduct({ ...product, price: p });
-    onClose();
+  const handleSave = () => {
+    const updated = products.map(p => p.id === product.id ? {...p, price: parseFloat(editPrice)} : p);
+    setProducts(updated); localStorage.setItem("pardilla_products", JSON.stringify(updated)); onClose();
   };
   return (
     <div className="modal"><div className="modal-content">
       <div className="modal-header"><span>{product.name}</span><button className="modal-close" onClick={onClose}>×</button></div>
-      <div className="card"><h4 style={{ marginBottom: "8px" }}>Información</h4><p style={{ fontSize: "13px", color: "#666" }}>Categoría: {product.category}</p><p style={{ fontSize: "20px", fontWeight: "700", color: "var(--primary)", marginTop: "8px" }}>{Number(product.price).toFixed(2)}€</p></div>
-      <div className="card">
-        <div className="demo-banner">⚠️ Precios de competencia simulados (solo demo).</div>
-        <h4 style={{ marginBottom: "12px" }}>Precios Competencia</h4>
-        {competitors.map((c, idx) => <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: "13px" }}><span>{c.name}</span><span style={{ fontWeight: "600" }}>{c.price}€</span></div>)}
-      </div>
-      <div className="form-group"><label>Editar Precio</label>
-        <input type="number" className={`input ${error ? "error" : ""}`} step="0.01" min="0" value={editPrice} onChange={e => { setEditPrice(e.target.value); setError(""); }} />
-        {error && <div className="form-error">{error}</div>}
-      </div>
+      <div className="card"><h4 style={{ marginBottom: "8px" }}>Información</h4><p style={{ fontSize: "13px", color: "#666" }}>Categoría: {product.category}</p><p style={{ fontSize: "20px", fontWeight: "700", color: "var(--primary)", marginTop: "8px" }}>{product.price.toFixed(2)}€</p></div>
+      <div className="card"><h4 style={{ marginBottom: "12px" }}>Precios Competencia</h4>{competitors.map((c, idx) => <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: "13px" }}><span>{c.name}</span><span style={{ fontWeight: "600" }}>{c.price}€</span></div>)}</div>
+      <div className="form-group"><label>Editar Precio</label><input type="number" className="input" step="0.01" value={editPrice} onChange={e => setEditPrice(parseFloat(e.target.value) || 0)} /></div>
       <div className="modal-footer"><button className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={handleSave}>Guardar</button></div>
     </div></div>
   );
@@ -2214,87 +1823,57 @@ function ProductDetailModal({ product, onClose, updateProduct }) {
 function AddTaskModal({ onClose, onAdd }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!title.trim()) { setError("El título es obligatorio"); return; }
-    setSubmitting(true);
-    try { await onAdd({ title: title.trim(), description: description.trim() }); }
-    catch (err) { setError(err.message); setSubmitting(false); }
-  };
+  const handleSubmit = (e) => { e.preventDefault(); if (!title) return; onAdd({ title, description }); onClose(); };
   return (
     <div className="modal"><div className="modal-content">
       <div className="modal-header"><span>Nueva Tarea</span><button className="modal-close" onClick={onClose}>×</button></div>
       <form onSubmit={handleSubmit}>
-        {error && <div className="error-message">{error}</div>}
-        <div className="form-group"><label>Título</label><input type="text" className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Revisar inventario" required autoFocus /></div>
+        <div className="form-group"><label>Título</label><input type="text" className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Revisar inventario" required /></div>
         <div className="form-group"><label>Descripción</label><textarea className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Detalles..." style={{ minHeight: "100px" }}></textarea></div>
-        <div className="modal-footer"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>{submitting ? "Creando..." : "Crear"}</button></div>
-      </form>
-    </div></div>
-  );
-}
-
-// FIX #24: validación de precio
-function AddProductModal({ onClose, addProduct }) {
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("Bollería");
-  const [price, setPrice] = useState("");
-  const [error, setError] = useState("");
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    if (!name.trim()) { setError("El nombre es obligatorio"); return; }
-    const p = parseFloat(price);
-    if (!Number.isFinite(p) || p < 0) { setError("Introduce un precio válido"); return; }
-    await addProduct({ name: name.trim(), category, price: p });
-    onClose();
-  };
-  return (
-    <div className="modal"><div className="modal-content">
-      <div className="modal-header"><span>Nuevo Producto</span><button className="modal-close" onClick={onClose}>×</button></div>
-      <form onSubmit={handleSubmit}>
-        {error && <div className="error-message">{error}</div>}
-        <div className="form-group"><label>Nombre</label><input type="text" className="input" value={name} onChange={e => setName(e.target.value)} required /></div>
-        <div className="form-group"><label>Categoría</label><select className="input" value={category} onChange={e => setCategory(e.target.value)}>{["Bollería","Tartas","Especialidades","Pasteles","Panadería","Salados","Cafetería"].map(c => <option key={c}>{c}</option>)}</select></div>
-        <div className="form-group"><label>Precio (€)</label><input type="number" className="input" step="0.01" min="0" value={price} onChange={e => setPrice(e.target.value)} required /></div>
         <div className="modal-footer"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm">Crear</button></div>
       </form>
     </div></div>
   );
 }
 
-// FIX #25, #26: validación de números + selector de shiftType
-function AddEmployeeModal({ onClose, addEmployee }) {
+function AddProductModal({ onClose, products, setProducts }) {
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("Bollería");
+  const [price, setPrice] = useState("");
+  const handleSubmit = (e) => {
+    e.preventDefault(); if (!name || !price) return;
+    const np = { id: Math.max(...products.map(p => p.id), 0) + 1, name, category, price: parseFloat(price) };
+    const updated = [...products, np]; setProducts(updated); localStorage.setItem("pardilla_products", JSON.stringify(updated)); onClose();
+  };
+  return (
+    <div className="modal"><div className="modal-content">
+      <div className="modal-header"><span>Nuevo Producto</span><button className="modal-close" onClick={onClose}>×</button></div>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group"><label>Nombre</label><input type="text" className="input" value={name} onChange={e => setName(e.target.value)} required /></div>
+        <div className="form-group"><label>Categoría</label><select className="input" value={category} onChange={e => setCategory(e.target.value)}>{["Bollería","Tartas","Especialidades","Pasteles","Panadería","Salados","Cafetería"].map(c => <option key={c}>{c}</option>)}</select></div>
+        <div className="form-group"><label>Precio (€)</label><input type="number" className="input" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required /></div>
+        <div className="modal-footer"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm">Crear</button></div>
+      </form>
+    </div></div>
+  );
+}
+
+function AddEmployeeModal({ onClose, employees, setEmployees }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("Ayudante de Dependienta");
-  const [monthsWorked, setMonthsWorked] = useState("12");
-  const [shiftType, setShiftType] = useState("store");
-  const [error, setError] = useState("");
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    if (!name.trim()) { setError("Falta el nombre"); return; }
-    const m = parseInt(monthsWorked);
-    if (!Number.isFinite(m) || m < 0) { setError("Meses trabajados inválido"); return; }
-    await addEmployee({ name: name.trim(), role, monthsWorked: m, shiftType, vacationDays: 0, workedHolidays: 0 });
-    onClose();
+  const [monthsWorked, setMonthsWorked] = useState(12);
+  const handleSubmit = (e) => {
+    e.preventDefault(); if (!name) return;
+    const ne = { id: Math.max(...employees.map(e => e.id), 0) + 1, name, role, vacationDays: 0, workedHolidays: 0, monthsWorked, shiftType: "store" };
+    const updated = [...employees, ne]; setEmployees(updated); localStorage.setItem("pardilla_employees", JSON.stringify(updated)); onClose();
   };
   return (
     <div className="modal"><div className="modal-content">
       <div className="modal-header"><span>Nuevo Empleado</span><button className="modal-close" onClick={onClose}>×</button></div>
       <form onSubmit={handleSubmit}>
-        {error && <div className="error-message">{error}</div>}
         <div className="form-group"><label>Nombre</label><input type="text" className="input" value={name} onChange={e => setName(e.target.value)} required /></div>
         <div className="form-group"><label>Rol</label><select className="input" value={role} onChange={e => setRole(e.target.value)}>{ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-        <div className="form-group"><label>Meses Trabajados</label><input type="number" className="input" min="0" value={monthsWorked} onChange={e => setMonthsWorked(e.target.value)} /></div>
-        <div className="form-group"><label>Tipo de jornada</label>
-          <select className="input" value={shiftType} onChange={e => setShiftType(e.target.value)}>
-            <option value="store">Tienda (rotación A/B/C)</option>
-            <option value="pastry">Obrador / Pastelería</option>
-          </select>
-        </div>
+        <div className="form-group"><label>Meses Trabajados</label><input type="number" className="input" value={monthsWorked} onChange={e => setMonthsWorked(parseInt(e.target.value))} /></div>
         <div className="modal-footer"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm">Crear</button></div>
       </form>
     </div></div>
@@ -2304,41 +1883,25 @@ function AddEmployeeModal({ onClose, addEmployee }) {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [firebaseReady, setFirebaseReady] = useState(false);
-  const [authLoaded, setAuthLoaded] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-
-  // FIX #4, #37: empleados también sincronizados con Firestore
-  const [employees, setEmployees] = useState(() => safeLocalGet("pardilla_employees", EMPLOYEES_INIT));
-  const [products, setProducts] = useState(() => safeLocalGet("pardilla_products", PRODUCTS_INIT));
-
-  // FIX #1, #2: shiftTemplates ES estado, persistido y cargado de Firestore
-  const [shiftTemplates, setShiftTemplates] = useState(() => safeLocalGet("pardilla_shift_templates", SHIFT_TEMPLATES_DEFAULT));
-  const [pastryTemplate, setPastryTemplate] = useState(() => safeLocalGet("pardilla_pastry_template", SHIFT_TEMPLATE_PASTRY_DEFAULT));
-
-  const [rotationConfig, setRotationConfig] = useState(() => safeLocalGet("pardilla_rotation", ROTATION_DEFAULT));
-  const [vacationAssignments, setVacationAssignments] = useState([]);
+  const [employees, setEmployees] = useState(() => { const s = localStorage.getItem("pardilla_employees"); return s ? JSON.parse(s) : EMPLOYEES_INIT; });
+  const [products, setProducts] = useState(() => { const s = localStorage.getItem("pardilla_products"); return s ? JSON.parse(s) : PRODUCTS_INIT; });
+  const [shiftTemplates] = useState(SHIFT_TEMPLATES_DEFAULT);
+  const [rotationConfig, setRotationConfig] = useState(() => { const s = localStorage.getItem("pardilla_rotation"); return s ? JSON.parse(s) : ROTATION_DEFAULT; });
+  const [vacationAssignments, setVacationAssignments] = useState(() => { const s = localStorage.getItem("pardilla_vacation_assignments"); return s ? JSON.parse(s) : []; });
   const [screen, setScreen] = useState("home");
   const [modalOpen, setModalOpen] = useState(null);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [notification, setNotification] = useState({ msg: "", type: "" });
+  const [notification, setNotification] = useState("");
   const [newVersion, setNewVersion] = useState(null);
   const [updateUrl, setUpdateUrl] = useState("");
-  const [globalError, setGlobalError] = useState("");
-
-  const showNotification = useCallback((msg, type = "success") => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification({ msg: "", type: "" }), 3500);
-  }, []);
 
   useEffect(() => { initFirebase(); }, []);
 
-  // FIX #20, #37: acumulación mensual y festivos solo se ejecutan UNA VEZ por sesión cuando hay user
-  const accrualRanRef = useRef(false);
+  // Acumulación mensual: +2.5 días (= +1 mes trabajado) el día 1 de cada mes
   useEffect(() => {
-    if (!currentUser || accrualRanRef.current) return;
-    accrualRanRef.current = true;
     const now = new Date();
     const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const lastAccrual = localStorage.getItem("pardilla_last_accrual");
@@ -2348,183 +1911,60 @@ export default function App() {
     const [cy, cm] = currentYM.split("-").map(Number);
     const months = (cy - ly) * 12 + (cm - lm);
     if (months <= 0) return;
-    setEmployees(prev => {
-      const updated = prev.map(e => ({ ...e, monthsWorked: e.monthsWorked + months }));
-      safeLocalSet("pardilla_employees", updated);
-      return updated;
-    });
+    const empsStr = localStorage.getItem("pardilla_employees");
+    if (!empsStr) return;
+    const emps = JSON.parse(empsStr);
+    const updated = emps.map(e => ({ ...e, monthsWorked: e.monthsWorked + months }));
+    setEmployees(updated);
+    localStorage.setItem("pardilla_employees", JSON.stringify(updated));
     localStorage.setItem("pardilla_last_accrual", currentYM);
-  }, [currentUser]);
+  }, []);
 
-  // FIX #8, #20: festivos con parseLocalDate y solo una vez por sesión
-  const holidayCreditsRef = useRef(false);
+  // Crédito automático de vacaciones por festivos de la CM trabajados según turno
   useEffect(() => {
-    if (!currentUser || holidayCreditsRef.current) return;
-    holidayCreditsRef.current = true;
-    const credits = safeLocalGet("pardilla_holiday_credits", {});
+    const empsStr = localStorage.getItem("pardilla_employees");
+    if (!empsStr) return;
+    const emps = JSON.parse(empsStr);
+    const credits = JSON.parse(localStorage.getItem("pardilla_holiday_credits") || "{}");
     const today = new Date(); today.setHours(23, 59, 59, 0);
     const newCredits = { ...credits };
     const updates = {};
     const dayKeys = ["D","L","M","X","J","V","S"];
-    const yearsToCheck = [today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1];
-    yearsToCheck.forEach(year => {
-      getMadridHolidays(year).forEach(dateStr => {
-        const date = parseLocalDate(dateStr);
-        if (!date || date > today) return;
-        const dow = date.getDay();
-        if (dow === 0) return;
-        const dayKey = dayKeys[dow];
-        employees.forEach(emp => {
-          const key = `${emp.id}_${dateStr}`;
-          if (newCredits[key]) return;
-          // Para empleados en rotación: usar plantilla A/B/C
-          if (rotationConfig?.assignments?.[emp.id] !== undefined) {
-            const shift = getCurrentShift(emp.id, date, rotationConfig);
-            if (!shift || !shiftTemplates[shift][dayKey]) return;
-          } else if (emp.shiftType === "pastry") {
-            if (!pastryTemplate[dayKey]) return;
-          } else { return; }
-          updates[emp.id] = (updates[emp.id] || 0) + 1;
-          newCredits[key] = true;
-        });
+    MADRID_HOLIDAYS_2026.forEach(dateStr => {
+      const date = new Date(dateStr);
+      if (date > today) return;
+      const dow = date.getDay();
+      if (dow === 0) return; // Excluir domingos
+      const dayKey = dayKeys[dow];
+      emps.forEach(emp => {
+        const key = `${emp.id}_${dateStr}`;
+        if (newCredits[key]) return;
+        const shift = getCurrentShift(emp.id, date, rotationConfig);
+        if (!shift || !SHIFT_TEMPLATES_DEFAULT[shift][dayKey]) return;
+        updates[emp.id] = (updates[emp.id] || 0) + 1;
+        newCredits[key] = true;
       });
     });
     if (Object.keys(updates).length === 0) return;
-    setEmployees(prev => {
-      const updated = prev.map(e => updates[e.id] ? { ...e, vacationDays: e.vacationDays + updates[e.id] } : e);
-      safeLocalSet("pardilla_employees", updated);
-      return updated;
-    });
-    safeLocalSet("pardilla_holiday_credits", newCredits);
-  }, [currentUser, employees, rotationConfig, shiftTemplates, pastryTemplate]);
+    const updated = emps.map(e => updates[e.id] ? { ...e, vacationDays: e.vacationDays + updates[e.id] } : e);
+    setEmployees(updated);
+    localStorage.setItem("pardilla_employees", JSON.stringify(updated));
+    localStorage.setItem("pardilla_holiday_credits", JSON.stringify(newCredits));
+  }, [rotationConfig]);
 
-  // Sync rotación
+  // Listener en tiempo real de Firebase para sincronizar cambios de turno en todos los clientes
   useEffect(() => {
     if (!firebaseReady || !currentUser) return;
-    const unsub = fb().firestore().collection("shiftConfig").doc("rotation")
+    const unsub = fb().firestore().collection("config").doc("rotation")
       .onSnapshot(doc => {
         if (doc.exists) {
           const data = doc.data();
           setRotationConfig(prev => JSON.stringify(prev) === JSON.stringify(data) ? prev : data);
-          safeLocalSet("pardilla_rotation", data);
+          localStorage.setItem("pardilla_rotation", JSON.stringify(data));
         }
       }, err => console.error("Rotation sync:", err));
     return () => unsub();
   }, [firebaseReady, currentUser]);
-
-  // FIX #2: Sync plantillas turnos (shiftConfig/templates)
-  useEffect(() => {
-    if (!firebaseReady || !currentUser) return;
-    const unsub = fb().firestore().collection("shiftConfig").doc("templates")
-      .onSnapshot(doc => {
-        if (doc.exists) {
-          const d = doc.data();
-          if (d.templates) { setShiftTemplates(d.templates); safeLocalSet("pardilla_shift_templates", d.templates); }
-          if (d.pastry) { setPastryTemplate(d.pastry); safeLocalSet("pardilla_pastry_template", d.pastry); }
-        }
-      }, err => console.error("Templates sync:", err));
-    return () => unsub();
-  }, [firebaseReady, currentUser]);
-
-  // FIX #4: Sync empleados desde Firestore (colección "employees")
-  useEffect(() => {
-    if (!firebaseReady || !currentUser) return;
-    const unsub = fb().firestore().collection("employees").orderBy("id")
-      .onSnapshot(snap => {
-        if (snap.empty) {
-          // Si está vacía, sembramos desde EMPLOYEES_INIT solo si somos admin
-          if (userProfile?.role === "admin") {
-            EMPLOYEES_INIT.forEach(e => fb().firestore().collection("employees").doc(String(e.id)).set(e).catch(()=>{}));
-          }
-          return;
-        }
-        const list = snap.docs.map(d => d.data());
-        setEmployees(list); safeLocalSet("pardilla_employees", list);
-      }, err => console.error("Employees sync:", err));
-    return () => unsub();
-  }, [firebaseReady, currentUser, userProfile?.role]);
-
-  // Sync productos
-  useEffect(() => {
-    if (!firebaseReady || !currentUser) return;
-    const unsub = fb().firestore().collection("products").orderBy("id")
-      .onSnapshot(snap => {
-        if (snap.empty) {
-          if (userProfile?.role === "admin") {
-            PRODUCTS_INIT.forEach(p => fb().firestore().collection("products").doc(String(p.id)).set(p).catch(()=>{}));
-          }
-          return;
-        }
-        const list = snap.docs.map(d => d.data());
-        setProducts(list); safeLocalSet("pardilla_products", list);
-      }, err => console.error("Products sync:", err));
-    return () => unsub();
-  }, [firebaseReady, currentUser, userProfile?.role]);
-
-  // Sync vacaciones
-  useEffect(() => {
-    if (!firebaseReady || !currentUser) return;
-    const unsub = fb().firestore().collection("vacationAssignments")
-      .onSnapshot(snap => setVacationAssignments(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => console.error("Vacations sync:", err));
-    return () => unsub();
-  }, [firebaseReady, currentUser]);
-
-  // CRUD empleados/productos/vacaciones (centralizados)
-  const updateEmployee = async (emp) => {
-    try {
-      await fb().firestore().collection("employees").doc(String(emp.id)).set(emp);
-      setEmployees(prev => { const list = prev.map(e => e.id === emp.id ? emp : e); safeLocalSet("pardilla_employees", list); return list; });
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-  const removeEmployee = async (id) => {
-    try {
-      await fb().firestore().collection("employees").doc(String(id)).delete();
-      setEmployees(prev => { const list = prev.filter(e => e.id !== id); safeLocalSet("pardilla_employees", list); return list; });
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-  const addEmployee = async (data) => {
-    try {
-      const newId = Math.max(...employees.map(e => e.id), 0) + 1;
-      const ne = { id: newId, ...data };
-      await fb().firestore().collection("employees").doc(String(newId)).set(ne);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-  const updateEmployeeVacation = async (empId, delta) => {
-    const emp = employees.find(e => e.id === empId);
-    if (!emp) return;
-    const updated = { ...emp, vacationDays: emp.vacationDays + delta };
-    await updateEmployee(updated);
-  };
-  const updateProduct = async (prod) => {
-    try {
-      await fb().firestore().collection("products").doc(String(prod.id)).set(prod);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-  const addProduct = async (data) => {
-    try {
-      const newId = Math.max(...products.map(p => p.id), 0) + 1;
-      const np = { id: newId, ...data };
-      await fb().firestore().collection("products").doc(String(newId)).set(np);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-  const addVacationAssignment = async (a) => {
-    try { await fb().firestore().collection("vacationAssignments").doc(a.id).set(a); }
-    catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-  const deleteVacationAssignment = async (id) => {
-    try { await fb().firestore().collection("vacationAssignments").doc(id).delete(); }
-    catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-  const signVacationAssignment = async (a, signatureData) => {
-    try {
-      const integrityHash = await digestRecord({ id: a.id, employeeId: a.employeeId, days: a.days, signedAt: new Date().toISOString() });
-      await fb().firestore().collection("vacationAssignments").doc(a.id).update({
-        status: "signed", signatureData, signedAt: new Date().toISOString(), integrityHash
-      });
-      const emp = employees.find(e => e.id === a.employeeId);
-      if (emp) await updateEmployee({ ...emp, vacationDays: emp.vacationDays - a.days });
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
 
   const checkForUpdates = (silent = false) => {
     if (!firebaseReady || !currentUser) return;
@@ -2534,17 +1974,12 @@ export default function App() {
         const { version, apkUrl, webUrl } = doc.data();
         const v = version ? version.trim() : null;
         const dismissed = localStorage.getItem("pardilla_dismissed_version");
-        // FIX #23: comparar semver y limpiar dismissed obsoleto
-        if (v && isNewerVersion(v, APP_VERSION)) {
-          if (v === dismissed) return;
-          if (dismissed && !isNewerVersion(v, dismissed)) {
-            // Si la dismissed es más nueva o igual a la remota, ignorar
-          }
+        if (v && v !== APP_VERSION && v !== dismissed) {
           setNewVersion(v);
           const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
           setUpdateUrl(isIOS ? (webUrl || WEB_URL) : (apkUrl || `https://github.com/${GITHUB_REPO}/releases/latest`));
         } else if (!silent) {
-          showNotification(`Tienes la versión más reciente (v${APP_VERSION})`);
+          alert(`Tienes la versión más reciente (v${APP_VERSION})`);
         }
       })
       .catch(console.error);
@@ -2557,41 +1992,26 @@ export default function App() {
   const initFirebase = () => {
     let config = FIREBASE_CONFIG_HARDCODED;
     if (!config) {
-      config = safeLocalGet("pardilla_firebase_config", null);
-      if (!config) { setFirebaseReady(false); setAuthLoaded(true); return; }
+      const str = localStorage.getItem("pardilla_firebase_config");
+      if (!str) { setFirebaseReady(false); return; }
+      try { config = JSON.parse(str); } catch { setFirebaseReady(false); return; }
     }
-    if (!fbReady()) { setGlobalError("Firebase SDK no cargado. Verifica el script en index.html."); setAuthLoaded(true); return; }
     try {
       if (!fb().apps.length) fb().initializeApp(config);
-      // Habilitar offline persistence (FIX #31)
-      try { fb().firestore().enablePersistence({ synchronizeTabs: true }).catch(()=>{}); } catch {}
       fb().auth().onAuthStateChanged(async (user) => {
         setCurrentUser(user);
-        if (user) {
-          try {
-            const p = await fb().firestore().collection("users").doc(user.uid).get();
-            if (p.exists) setUserProfile({ uid: user.uid, ...p.data() });
-            else setUserProfile(null);
-          } catch (e) { console.error("loadProfile:", e); setUserProfile(null); }
-        } else { setUserProfile(null); }
-        setAuthLoaded(true);
+        if (user) { const p = await fb().firestore().collection("users").doc(user.uid).get(); if (p.exists) setUserProfile({ uid: user.uid, ...p.data() }); }
       });
       setFirebaseReady(true);
-    } catch (e) { console.error("Firebase init error:", e); setGlobalError(e.message); setAuthLoaded(true); }
+    } catch (e) { console.error("Firebase init error:", e); }
   };
 
-  const handleConfigSet = (config) => { safeLocalSet("pardilla_firebase_config", config); initFirebase(); };
-  const handleLoginSuccess = async (user) => {
-    try {
-      const p = await fb().firestore().collection("users").doc(user.uid).get();
-      if (p.exists) setUserProfile({ uid: user.uid, ...p.data() });
-    } catch (e) { showNotification("Error cargando perfil: " + e.message, "error"); }
-  };
-  const handleLogout = async () => { try { await fb().auth().signOut(); } catch (e) { console.error(e); } setCurrentUser(null); setUserProfile(null); setScreen("home"); };
+  const handleConfigSet = (config) => { localStorage.setItem("pardilla_firebase_config", JSON.stringify(config)); initFirebase(); };
+  const handleLoginSuccess = async (user) => { const p = await fb().firestore().collection("users").doc(user.uid).get(); if (p.exists) setUserProfile({ uid: user.uid, ...p.data() }); };
+  const handleLogout = async () => { await fb().auth().signOut(); setCurrentUser(null); setUserProfile(null); };
+  const showNotification = (msg) => { setNotification(msg); setTimeout(() => setNotification(""), 3000); };
 
-  if (globalError) return <div className="login-screen"><div className="login-card"><h3>Error</h3><p style={{ marginTop: 12, fontSize: 13 }}>{globalError}</p></div></div>;
   if (!firebaseReady) return <SetupScreen onConfigSet={handleConfigSet} />;
-  if (!authLoaded) return <div className="loading-spinner"><div className="spinner"></div><div className="loading-text">Iniciando...</div></div>;
   if (!currentUser) return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   if (!userProfile) return <div className="loading-spinner"><div className="spinner"></div><div className="loading-text">Cargando perfil...</div></div>;
 
@@ -2622,13 +2042,6 @@ export default function App() {
         </div>
       )}
 
-      {/* FIX #28: breadcrumb sencillo */}
-      {screen !== "home" && (
-        <div className="container" style={{ paddingBottom: 0 }}>
-          <div className="breadcrumb"><a onClick={() => setScreen("home")}>← Inicio</a></div>
-        </div>
-      )}
-
       <div className="nav-tabs">
         {screen !== "home" && <button className="nav-tab" onClick={() => setScreen("home")}>Inicio</button>}
         {(userProfile.role === "admin" || userProfile.role === "manager") && <>
@@ -2650,32 +2063,30 @@ export default function App() {
       </div>
 
       {screen === "home" && <HomeScreen userProfile={userProfile} onNavigate={setScreen} />}
-      {screen === "employees" && <EmployeesScreen employees={employees} onOpenModal={setModalOpen} onSelectEmployee={setSelectedEmployee} />}
-      {screen === "products" && <ProductsScreen products={products} onOpenModal={setModalOpen} onSelectProduct={setSelectedProduct} />}
+      {screen === "employees" && <EmployeesScreen employees={employees} setEmployees={setEmployees} onOpenModal={setModalOpen} onSelectEmployee={setSelectedEmployee} />}
+      {screen === "products" && <ProductsScreen products={products} setProducts={setProducts} onOpenModal={setModalOpen} onSelectProduct={setSelectedProduct} />}
       {screen === "management" && <ManagementScreen />}
-      {screen === "tasks" && <TasksScreen userProfile={userProfile} />}
+      {screen === "tasks" && <TasksScreen onOpenModal={setModalOpen} />}
       {screen === "schedule" && <ShiftPlanningScreen employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} setRotationConfig={setRotationConfig} />}
-      {screen === "vacation" && <VacationPlanningScreen employees={employees} updateEmployeeVacation={updateEmployeeVacation} userProfile={userProfile} vacationAssignments={vacationAssignments} signVacationAssignment={signVacationAssignment} />}
-      {screen === "assignVacations" && <AssignVacationsScreen employees={employees} vacationAssignments={vacationAssignments} addVacationAssignment={addVacationAssignment} deleteVacationAssignment={deleteVacationAssignment} />}
-      {screen === "miHorario" && <ConsultarHorarioScreen employees={employees} userProfile={userProfile} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} pastryTemplate={pastryTemplate} />}
-      {screen === "fichar" && <FicharScreen userProfile={userProfile} employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} pastryTemplate={pastryTemplate} showNotification={showNotification} />}
-      {screen === "shiftConfig" && <ShiftConfigScreen shiftTemplates={shiftTemplates} setShiftTemplates={setShiftTemplates} pastryTemplate={pastryTemplate} setPastryTemplate={setPastryTemplate} rotationConfig={rotationConfig} />}
+      {screen === "vacation" && <VacationPlanningScreen employees={employees} setEmployees={setEmployees} userProfile={userProfile} vacationAssignments={vacationAssignments} setVacationAssignments={setVacationAssignments} />}
+      {screen === "assignVacations" && <AssignVacationsScreen employees={employees} vacationAssignments={vacationAssignments} setVacationAssignments={setVacationAssignments} />}
+      {screen === "miHorario" && <ConsultarHorarioScreen employees={employees} userProfile={userProfile} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
+      {screen === "fichar" && <FicharScreen userProfile={userProfile} employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
+      {screen === "shiftConfig" && <ShiftConfigScreen shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
       {screen === "users" && <UserManagementScreen userProfile={userProfile} employees={employees} />}
       {screen === "firebase" && <FirebaseConfigScreen />}
 
-      {selectedEmployee && <EmployeeDetailModal employee={selectedEmployee} onClose={() => setSelectedEmployee(null)} updateEmployee={updateEmployee} removeEmployee={removeEmployee} employees={employees} />}
-      {selectedProduct && <ProductDetailModal product={selectedProduct} onClose={() => setSelectedProduct(null)} updateProduct={updateProduct} />}
-      {modalOpen === "addProduct" && <AddProductModal onClose={() => setModalOpen(null)} addProduct={addProduct} />}
-      {modalOpen === "addEmployee" && <AddEmployeeModal onClose={() => setModalOpen(null)} addEmployee={addEmployee} />}
-      {notification.msg && <div className={`notification ${notification.type === "error" ? "error" : notification.type === "warning" ? "warning" : ""}`}>{notification.msg}</div>}
+      {selectedEmployee && <EmployeeDetailModal employee={selectedEmployee} onClose={() => setSelectedEmployee(null)} setEmployees={setEmployees} employees={employees} />}
+      {selectedProduct && <ProductDetailModal product={selectedProduct} onClose={() => setSelectedProduct(null)} products={products} setProducts={setProducts} />}
+      {modalOpen === "addTask" && <AddTaskModal onClose={() => setModalOpen(null)} onAdd={() => { showNotification("Tarea creada"); setModalOpen(null); }} />}
+      {modalOpen === "addProduct" && <AddProductModal onClose={() => setModalOpen(null)} products={products} setProducts={setProducts} />}
+      {modalOpen === "addEmployee" && <AddEmployeeModal onClose={() => setModalOpen(null)} employees={employees} setEmployees={setEmployees} />}
+      {notification && <div className="notification">{notification}</div>}
     </div>
   );
 }
 
 // ─── Inject CSS ───────────────────────────────────────────────────────────────
-if (typeof document !== "undefined" && !document.getElementById("pardilla-styles")) {
-  const styleTag = document.createElement("style");
-  styleTag.id = "pardilla-styles";
-  styleTag.textContent = styles;
-  document.head.appendChild(styleTag);
-}
+const styleTag = document.createElement("style");
+styleTag.textContent = styles;
+document.head.appendChild(styleTag);
