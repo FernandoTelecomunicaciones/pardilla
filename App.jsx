@@ -2077,8 +2077,10 @@ export default function App() {
       {screen === "miHorario" && <ConsultarHorarioScreen employees={employees} userProfile={userProfile} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
       {screen === "fichar" && <FicharScreen userProfile={userProfile} employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
       {screen === "shiftConfig" && <ShiftConfigScreen shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} />}
-      {screen === "users" && <UserManagementScreen userProfile={userProfile} employees={employees} />}
-      {screen === "firebase" && <FirebaseConfigScreen />}
+        {screen === "users" && <UserManagementScreen userProfile={userProfile} employees={employees} />}
+        {screen === "firebase" && <FirebaseConfigScreen />}
+        {screen === "whoIsWorking" && <WhoIsWorkingScreen employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} vacationAssignments={vacationAssignments} />}
+        {screen === "employeeVacations" && <EmployeeVacationsScreen employees={employees} vacationAssignments={vacationAssignments} />}
 
       {selectedEmployee && <EmployeeDetailModal employee={selectedEmployee} onClose={() => setSelectedEmployee(null)} setEmployees={setEmployees} employees={employees} />}
       {selectedProduct && <ProductDetailModal product={selectedProduct} onClose={() => setSelectedProduct(null)} products={products} setProducts={setProducts} />}
