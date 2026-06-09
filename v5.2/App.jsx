@@ -222,14 +222,6 @@ const styles = `
   .breadcrumb { font-size: 13px; color: #666; margin-bottom: 12px; }
   .breadcrumb a { color: var(--primary); cursor: pointer; text-decoration: none; }
   .breadcrumb a:hover { text-decoration: underline; }
-  .copyright-notice { text-align: center; color: rgba(255,255,255,0.72); font-size: 11px; margin-top: 18px; line-height: 1.6; padding: 0 4px; }
-  .copyright-notice strong { color: rgba(255,255,255,0.92); display: block; margin-bottom: 2px; }
-  .report-card { background: var(--card-bg); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 10px; }
-  .priority-alta { background: #FFEBEE; color: #C62828; }
-  .priority-media { background: #FFF3E0; color: #E65100; }
-  .priority-baja { background: #E8F5E9; color: #2E7D32; }
-  .tipo-nota { background: #E3F2FD; color: #1565C0; }
-  .tipo-tarea { background: #FFF3E0; color: #E65100; }
   @media (max-width: 768px) {
     .home-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
@@ -240,7 +232,7 @@ const styles = `
 `;
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_VERSION = "5.3";
+const APP_VERSION = "5.2";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
@@ -741,11 +733,6 @@ function LoginScreen({ onLoginSuccess }) {
           Al usar esta app aceptas el tratamiento de tus datos según la política de privacidad de la empresa (RGPD). Los registros horarios y firmas se conservan 4 años conforme al RDL 8/2019.
         </p>
       </div>
-      <div className="copyright-notice">
-        <strong>© Fernando Sanz García — Todos los derechos reservados</strong>
-        Aplicación y código desarrollados, protegidos y registrados a nombre de Fernando Sanz García.
-        Queda prohibida su reproducción o distribución sin autorización expresa.
-      </div>
     </div>
   );
 }
@@ -755,23 +742,21 @@ function HomeScreen({ userProfile, onNavigate }) {
     if (userProfile.role === "admin") return [
       { icon: "👥", label: "Empleados", screen: "employees" },{ icon: "🍰", label: "Productos", screen: "products" },
       { icon: "📊", label: "Gestión", screen: "management" },{ icon: "✓", label: "Tareas", screen: "tasks" },
-      { icon: "🛠", label: "Sugerencias", screen: "sugerencias" },{ icon: "🏪", label: "Turnos", screen: "schedule" },
-      { icon: "📅", label: "Mi Horario", screen: "miHorario" },{ icon: "🕐", label: "Fichar", screen: "fichar" },
-      { icon: "🏖️", label: "Vacaciones", screen: "vacation" },{ icon: "📋", label: "Asignar Vacaciones", screen: "assignVacations" },
+      { icon: "🏪", label: "Turnos", screen: "schedule" },{ icon: "📅", label: "Mi Horario", screen: "miHorario" },
+      { icon: "🕐", label: "Fichar", screen: "fichar" },{ icon: "🏖️", label: "Vacaciones", screen: "vacation" },
+      { icon: "📋", label: "Asignar Vacaciones", screen: "assignVacations" },
       { icon: "⚙️", label: "Config Turnos", screen: "shiftConfig" },{ icon: "👤", label: "Usuarios", screen: "users" },
       { icon: "🔧", label: "Firebase", screen: "firebase" },
     ];
     if (userProfile.role === "manager") return [
       { icon: "👥", label: "Empleados", screen: "employees" },{ icon: "🍰", label: "Productos", screen: "products" },
       { icon: "📊", label: "Gestión", screen: "management" },{ icon: "✓", label: "Tareas", screen: "tasks" },
-      { icon: "🛠", label: "Sugerencias", screen: "sugerencias" },{ icon: "🏪", label: "Turnos", screen: "schedule" },
-      { icon: "📅", label: "Mi Horario", screen: "miHorario" },{ icon: "🕐", label: "Fichar", screen: "fichar" },
-      { icon: "🏖️", label: "Vacaciones", screen: "vacation" },
+      { icon: "🏪", label: "Turnos", screen: "schedule" },{ icon: "📅", label: "Mi Horario", screen: "miHorario" },
+      { icon: "🕐", label: "Fichar", screen: "fichar" },{ icon: "🏖️", label: "Vacaciones", screen: "vacation" },
     ];
     return [
       { icon: "📅", label: "Mi Horario", screen: "miHorario" },{ icon: "🕐", label: "Fichar", screen: "fichar" },
       { icon: "🏖️", label: "Mis Vacaciones", screen: "vacation" },{ icon: "✓", label: "Mis Tareas", screen: "tasks" },
-      { icon: "🛠", label: "Sugerencias", screen: "sugerencias" },
     ];
   };
   return (
@@ -1154,12 +1139,11 @@ function ManagementScreen() {
   );
 }
 
-function TasksScreen({ userProfile, employees }) {
-  const isAdmin = userProfile.role === "admin" || userProfile.role === "manager";
+// FIX #17, #18: tareas en Firestore (compartidas entre dispositivos) y modal funcional
+function TasksScreen({ userProfile }) {
   const [tasks, setTasks] = useState([]);
-  const [activeTab, setActiveTab] = useState(isAdmin ? "all" : "assigned");
   const [showAdd, setShowAdd] = useState(false);
-  const [filterEmp, setFilterEmp] = useState("");
+  const isAdminOrManager = userProfile.role === "admin" || userProfile.role === "manager";
 
   useEffect(() => {
     if (!fbReady()) return;
@@ -1168,18 +1152,13 @@ function TasksScreen({ userProfile, employees }) {
     return () => unsub();
   }, []);
 
-  const addTask = async (data) => {
-    await fb().firestore().collection("tasks").add({
-      ...data,
-      completed: false,
-      createdAt: new Date().toISOString(),
-      createdBy: userProfile.uid,
-      createdByName: userProfile.name,
-    });
-  };
-
   const toggleTask = async (t) => {
     try { await fb().firestore().collection("tasks").doc(t.id).update({ completed: !t.completed, completedAt: !t.completed ? new Date().toISOString() : null }); }
+    catch (e) { console.error(e); }
+  };
+
+  const addTask = async (data) => {
+    try { await fb().firestore().collection("tasks").add({ ...data, completed: false, createdAt: new Date().toISOString(), createdBy: userProfile.name }); }
     catch (e) { console.error(e); }
   };
 
@@ -1188,109 +1167,32 @@ function TasksScreen({ userProfile, employees }) {
     catch (e) { console.error(e); }
   };
 
-  const getVisible = () => {
-    if (isAdmin) {
-      if (activeTab === "all") {
-        let t = tasks.filter(x => x.assignedTo && x.assignedTo !== "self");
-        if (filterEmp) t = t.filter(x => x.assignedTo === filterEmp);
-        return t;
-      }
-      return tasks.filter(x => x.assignedTo === "self" && x.createdBy === userProfile.uid);
-    }
-    const myEmpId = String(userProfile.linkedEmployeeId || "");
-    if (activeTab === "assigned") {
-      return tasks.filter(x =>
-        (x.assignedTo === myEmpId || x.assignedTo === "all") && x.createdBy !== userProfile.uid
-      );
-    }
-    return tasks.filter(x => x.createdBy === userProfile.uid && x.assignedTo === "self");
-  };
-
-  const visible = getVisible();
-  const prioBorderColor = (p) => p === "alta" ? "#F44336" : p === "media" ? "#FF9800" : "#4CAF50";
+  // El empleado solo ve tareas no completadas asignadas a él o globales
+  const visible = userProfile.role === "empleado"
+    ? tasks.filter(t => !t.assignedTo || t.assignedTo === userProfile.uid || t.assignedTo === "all")
+    : tasks;
 
   return (
     <div className="container">
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-        <h2>{isAdmin ? "Tareas y Notas" : "Mis Tareas"}</h2>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Nueva</button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <h2>{userProfile.role === "empleado" ? "Mis Tareas" : "Tareas del equipo"}</h2>
+        {isAdminOrManager && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Nueva</button>}
       </div>
-
-      <div className="nav-tabs" style={{ marginBottom:16 }}>
-        {isAdmin ? (
-          <>
-            <button className={`nav-tab ${activeTab==="all"?"active":""}`} onClick={() => setActiveTab("all")}>Asignadas a empleados</button>
-            <button className={`nav-tab ${activeTab==="mine"?"active":""}`} onClick={() => setActiveTab("mine")}>Mis notas</button>
-          </>
-        ) : (
-          <>
-            <button className={`nav-tab ${activeTab==="assigned"?"active":""}`} onClick={() => setActiveTab("assigned")}>Del admin</button>
-            <button className={`nav-tab ${activeTab==="mine"?"active":""}`} onClick={() => setActiveTab("mine")}>Mis notas</button>
-          </>
-        )}
-      </div>
-
-      {isAdmin && activeTab === "all" && (
-        <div style={{ marginBottom:12 }}>
-          <select className="input" style={{ maxWidth:240, marginBottom:0 }} value={filterEmp} onChange={e => setFilterEmp(e.target.value)}>
-            <option value="">Todos los empleados</option>
-            {employees.map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
-            <option value="all">Globales (todos)</option>
-          </select>
-        </div>
-      )}
-
-      {visible.length === 0 && (
-        <div className="card" style={{ textAlign:"center", color:"#999", padding:28 }}>
-          <div style={{ fontSize:36, marginBottom:8 }}>📋</div>
-          <p>No hay {activeTab==="mine" ? "notas" : "tareas"} aquí todavía.</p>
-        </div>
-      )}
-
-      {visible.map(task => {
-        const assigneeName = task.assignedTo && task.assignedTo !== "self" && task.assignedTo !== "all"
-          ? (employees.find(e => String(e.id) === String(task.assignedTo))?.name || "Empleado")
-          : task.assignedTo === "all" ? "Todos" : null;
-        const borderColor = task.type === "nota" ? "#2196F3" : prioBorderColor(task.priority);
-        return (
-          <div key={task.id} className="card" style={{ marginBottom:10, borderLeft:`4px solid ${borderColor}`, opacity: task.completed ? 0.72 : 1 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:5, alignItems:"center" }}>
-                  <span className={`badge tipo-${task.type||"tarea"}`} style={{ fontSize:11, padding:"2px 8px" }}>{task.type === "nota" ? "Nota" : "Tarea"}</span>
-                  {task.type === "tarea" && task.priority && (
-                    <span className={`badge priority-${task.priority}`} style={{ fontSize:11, padding:"2px 8px" }}>{task.priority.charAt(0).toUpperCase()+task.priority.slice(1)}</span>
-                  )}
-                  {task.completed && <span className="badge" style={{ fontSize:11, padding:"2px 8px", background:"#E8F5E9", color:"#2E7D32" }}>Completada</span>}
-                </div>
-                <h4 style={{ textDecoration: task.completed ? "line-through" : "none", marginBottom: task.body ? 4 : 2 }}>{task.title}</h4>
-                {task.body && <p style={{ fontSize:13, color:"#555", marginBottom:4 }}>{task.body}</p>}
-                <div style={{ fontSize:11, color:"#999", display:"flex", gap:10, flexWrap:"wrap" }}>
-                  {assigneeName && <span>Para: <strong>{assigneeName}</strong></span>}
-                  {task.dueDate && <span>Fecha: <strong>{task.dueDate}{task.dueDateEnd ? " — "+task.dueDateEnd : ""}</strong></span>}
-                  {task.createdByName && <span>Por: {task.createdByName}</span>}
-                </div>
-              </div>
-              <div style={{ display:"flex", gap:4, flexShrink:0 }}>
-                <button className="btn btn-sm btn-secondary" onClick={() => toggleTask(task)} style={{ minWidth:30 }}>{task.completed ? "↩" : "✓"}</button>
-                {(isAdmin || task.createdBy === userProfile.uid) && (
-                  <button className="btn btn-sm btn-danger" onClick={() => deleteTask(task.id)} style={{ minWidth:30 }}>×</button>
-                )}
-              </div>
-            </div>
+      {visible.length === 0 && <p style={{ color: "#999" }}>No hay tareas</p>}
+      {visible.map(task => (
+        <div key={task.id} className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <h4 style={{ textDecoration: task.completed ? "line-through" : "none", opacity: task.completed ? 0.6 : 1 }}>{task.title}</h4>
+            {task.description && <p style={{ fontSize: "13px", color: "#666" }}>{task.description}</p>}
+            <p style={{ fontSize: 11, color: "#999", marginTop: 4 }}>Creado por {task.createdBy || "—"}</p>
           </div>
-        );
-      })}
-
-      {showAdd && (
-        <AddTaskModal
-          onClose={() => setShowAdd(false)}
-          onAdd={async (data) => { await addTask(data); setShowAdd(false); }}
-          isAdmin={isAdmin}
-          employees={employees}
-          defaultAssignedTo={activeTab === "mine" ? "self" : ""}
-        />
-      )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <button className="btn btn-sm btn-secondary" onClick={() => toggleTask(task)} title={task.completed ? "Marcar pendiente" : "Marcar completada"}>{task.completed ? "✓" : "○"}</button>
+            {isAdminOrManager && <button className="btn btn-sm btn-danger" onClick={() => deleteTask(task.id)}>×</button>}
+          </div>
+        </div>
+      ))}
+      {showAdd && <AddTaskModal onClose={() => setShowAdd(false)} onAdd={async (data) => { await addTask(data); setShowAdd(false); }} />}
     </div>
   );
 }
@@ -2603,102 +2505,26 @@ function ProductDetailModal({ product, onClose, updateProduct }) {
   );
 }
 
-function AddTaskModal({ onClose, onAdd, isAdmin, employees, defaultAssignedTo }) {
-  const [type, setType] = useState("tarea");
+function AddTaskModal({ onClose, onAdd }) {
   const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [assignedTo, setAssignedTo] = useState(defaultAssignedTo !== undefined ? defaultAssignedTo : "self");
-  const [priority, setPriority] = useState("media");
-  const [dueDate, setDueDate] = useState("");
-  const [dueDateEnd, setDueDateEnd] = useState("");
-  const [useRange, setUseRange] = useState(false);
+  const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  const prioColors = { alta: "#F44336", media: "#FF9800", baja: "#4CAF50" };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) { setError("El título es obligatorio"); return; }
     setSubmitting(true);
-    const data = { type, title: title.trim(), body: body.trim(), assignedTo: assignedTo || "self" };
-    if (type === "tarea") {
-      data.priority = priority;
-      if (dueDate) data.dueDate = dueDate;
-      if (useRange && dueDateEnd) data.dueDateEnd = dueDateEnd;
-    }
-    try { await onAdd(data); }
+    try { await onAdd({ title: title.trim(), description: description.trim() }); }
     catch (err) { setError(err.message); setSubmitting(false); }
   };
-
   return (
     <div className="modal"><div className="modal-content">
-      <div className="modal-header"><span>Nueva tarea / nota</span><button className="modal-close" onClick={onClose}>×</button></div>
+      <div className="modal-header"><span>Nueva Tarea</span><button className="modal-close" onClick={onClose}>×</button></div>
       <form onSubmit={handleSubmit}>
         {error && <div className="error-message">{error}</div>}
-
-        <div className="form-group">
-          <label>Tipo</label>
-          <div style={{ display:"flex", gap:8 }}>
-            <button type="button" className={`btn btn-sm ${type==="tarea"?"btn-primary":"btn-secondary"}`} onClick={() => setType("tarea")}>Tarea</button>
-            <button type="button" className={`btn btn-sm ${type==="nota"?"btn-primary":"btn-secondary"}`} onClick={() => setType("nota")}>Nota</button>
-          </div>
-        </div>
-
-        {isAdmin && (
-          <div className="form-group">
-            <label>Asignar a</label>
-            <select className="input" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
-              <option value="self">Solo para mí (nota propia)</option>
-              <option value="all">Todos los empleados</option>
-              {(employees || []).map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
-            </select>
-          </div>
-        )}
-
-        <div className="form-group">
-          <label>Título</label>
-          <input type="text" className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Revisar inventario" required autoFocus />
-        </div>
-        <div className="form-group">
-          <label>Descripción (opcional)</label>
-          <textarea className="input" value={body} onChange={e => setBody(e.target.value)} placeholder="Detalles..." style={{ minHeight:80 }} />
-        </div>
-
-        {type === "tarea" && (
-          <>
-            <div className="form-group">
-              <label>Prioridad</label>
-              <div style={{ display:"flex", gap:8 }}>
-                {["alta","media","baja"].map(p => (
-                  <button key={p} type="button" onClick={() => setPriority(p)}
-                    className={`btn btn-sm ${priority===p?"btn-primary":"btn-secondary"}`}
-                    style={{ flex:1, ...(priority===p ? { background: prioColors[p], borderColor: prioColors[p] } : { color: prioColors[p] }) }}>
-                    {p.charAt(0).toUpperCase()+p.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Fecha de realización</label>
-              <input type="date" className="input" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label style={{ display:"flex", alignItems:"center", gap:8, fontWeight:"normal", cursor:"pointer" }}>
-                <input type="checkbox" checked={useRange} onChange={e => setUseRange(e.target.checked)} />
-                Usar rango de fechas (fecha de inicio y fin)
-              </label>
-              {useRange && (
-                <input type="date" className="input" style={{ marginTop:8 }} value={dueDateEnd} onChange={e => setDueDateEnd(e.target.value)} />
-              )}
-            </div>
-          </>
-        )}
-
-        <div className="modal-footer">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button>
-          <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>{submitting ? "Guardando..." : "Guardar"}</button>
-        </div>
+        <div className="form-group"><label>Título</label><input type="text" className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Revisar inventario" required autoFocus /></div>
+        <div className="form-group"><label>Descripción</label><textarea className="input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Detalles..." style={{ minHeight: "100px" }}></textarea></div>
+        <div className="modal-footer"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>{submitting ? "Creando..." : "Crear"}</button></div>
       </form>
     </div></div>
   );
@@ -2775,304 +2601,6 @@ function AddEmployeeModal({ onClose, addEmployee }) {
         <div className="modal-footer"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm">Crear</button></div>
       </form>
     </div></div>
-  );
-}
-
-// ─── SUGERENCIAS E INCIDENCIAS ───────────────────────────────────────────────
-function SugerenciasScreen({ userProfile, employees }) {
-  const isAdmin = userProfile.role === "admin" || userProfile.role === "manager";
-  const [reports, setReports] = useState([]);
-  const [activeTab, setActiveTab] = useState(isAdmin ? "all" : "new");
-  const [formType, setFormType] = useState("incidencia");
-  const [category, setCategory] = useState("");
-  const [body, setBody] = useState("");
-  const [anonymous, setAnonymous] = useState(false);
-  const [priority, setPriority] = useState("media");
-  const [photo, setPhoto] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [filterType, setFilterType] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const fileRef = useRef(null);
-
-  useEffect(() => {
-    if (!fbReady()) return;
-    const unsub = fb().firestore().collection("reports").orderBy("createdAt", "desc")
-      .onSnapshot(snap => setReports(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("reports:", e));
-    return () => unsub();
-  }, []);
-
-  const resetForm = () => {
-    setCategory(""); setBody(""); setAnonymous(false); setPriority("media"); setPhoto(null);
-    if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const handlePhotoChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1.5 * 1024 * 1024) { alert("La foto no puede superar 1.5 MB"); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => setPhoto(ev.target.result);
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!body.trim() && formType !== "incidencia") return;
-    if (formType === "incidencia" && !category) { alert("Selecciona el tipo de incidencia"); return; }
-    setSubmitting(true);
-    const myEmpId = String(userProfile.linkedEmployeeId || "");
-    const data = {
-      type: formType,
-      category: category || null,
-      body: body.trim(),
-      anonymous: (formType === "confidencial" || formType === "sugerencia") ? anonymous : false,
-      employeeId: anonymous ? null : myEmpId || userProfile.uid,
-      employeeName: anonymous ? null : userProfile.name,
-      priority: formType === "mejora" ? priority : null,
-      photo: photo || null,
-      status: "pendiente",
-      createdAt: new Date().toISOString(),
-    };
-    try {
-      await fb().firestore().collection("reports").add(data);
-      resetForm();
-      setSubmitted(true);
-      setTimeout(() => setSubmitted(false), 4000);
-    } catch (err) { alert("Error al enviar: " + err.message); }
-    setSubmitting(false);
-  };
-
-  const updateStatus = async (id, status) => {
-    try {
-      await fb().firestore().collection("reports").doc(id).update({
-        status,
-        resolvedAt: status === "resuelto" ? new Date().toISOString() : null,
-      });
-    } catch (e) { console.error(e); }
-  };
-
-  const deleteReport = async (id) => {
-    if (!window.confirm("¿Eliminar este reporte?")) return;
-    try { await fb().firestore().collection("reports").doc(id).delete(); } catch (e) { console.error(e); }
-  };
-
-  const INCIDENCIA_CATS = ["Falta de producto", "Máquina averiada", "Hay una gotera", "Se ha roto una bandeja", "Otro"];
-  const TYPE_ICONS = { incidencia: "🛠", sugerencia: "💡", confidencial: "🚨", mejora: "🔍" };
-  const TYPE_LABELS = { incidencia: "Incidencia", sugerencia: "Sugerencia", confidencial: "Confidencial", mejora: "Mejora detectada" };
-  const STATUS_LABELS = { pendiente: "Pendiente", en_proceso: "En proceso", resuelto: "Resuelto" };
-  const STATUS_COLORS = { pendiente: "#FF9800", en_proceso: "#2196F3", resuelto: "#4CAF50" };
-  const PRIO_COLORS = { alta: "#C62828", media: "#E65100", baja: "#2E7D32" };
-  const PRIO_BG = { alta: "#FFEBEE", media: "#FFF3E0", baja: "#E8F5E9" };
-  const PRIO_ICON = { alta: "🔴", media: "🟡", baja: "🟢" };
-
-  const myEmpId = String(userProfile.linkedEmployeeId || "");
-  const myReports = reports.filter(r => !r.anonymous && (r.employeeId === myEmpId || r.employeeId === userProfile.uid));
-  const visibleAdmin = reports.filter(r =>
-    (!filterType || r.type === filterType) &&
-    (!filterStatus || r.status === filterStatus)
-  );
-
-  const renderReportCard = (r, showControls) => {
-    const prioColor = r.priority ? PRIO_COLORS[r.priority] : null;
-    const prioBg = r.priority ? PRIO_BG[r.priority] : null;
-    return (
-      <div key={r.id} className="report-card" style={{ borderLeft: `4px solid ${STATUS_COLORS[r.status] || "#DDD"}` }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
-          <div style={{ flex:1 }}>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:6, alignItems:"center" }}>
-              <span style={{ fontWeight:700, fontSize:14 }}>{TYPE_ICONS[r.type]} {TYPE_LABELS[r.type]}</span>
-              {r.category && <span style={{ fontSize:12, background:"#F5F1E8", padding:"2px 8px", borderRadius:10 }}>{r.category}</span>}
-              {r.priority && (
-                <span style={{ fontSize:11, background:prioBg, color:prioColor, padding:"2px 8px", borderRadius:10, fontWeight:600 }}>
-                  {PRIO_ICON[r.priority]} {r.priority.charAt(0).toUpperCase()+r.priority.slice(1)}
-                </span>
-              )}
-              <span style={{ fontSize:11, background:STATUS_COLORS[r.status]+"22", color:STATUS_COLORS[r.status], padding:"2px 8px", borderRadius:10, fontWeight:600 }}>
-                {STATUS_LABELS[r.status]}
-              </span>
-            </div>
-            {r.body && <p style={{ fontSize:13, color:"#333", marginBottom:6 }}>{r.body}</p>}
-            {r.photo && (
-              <img src={r.photo} alt="adjunto" style={{ maxWidth:"100%", maxHeight:140, borderRadius:8, marginBottom:8, objectFit:"cover", display:"block" }} />
-            )}
-            <p style={{ fontSize:11, color:"#999" }}>
-              {r.anonymous ? "Anónimo" : (r.employeeName || "—")} · {r.createdAt ? new Date(r.createdAt).toLocaleDateString("es-ES") : "—"}
-            </p>
-          </div>
-          {showControls && (
-            <div style={{ display:"flex", flexDirection:"column", gap:4, minWidth:110 }}>
-              <select className="input" value={r.status} onChange={e => updateStatus(r.id, e.target.value)}
-                style={{ fontSize:12, padding:"4px 6px", marginBottom:0 }}>
-                <option value="pendiente">Pendiente</option>
-                <option value="en_proceso">En proceso</option>
-                <option value="resuelto">Resuelto</option>
-              </select>
-              <button className="btn btn-sm btn-danger" onClick={() => deleteReport(r.id)} style={{ fontSize:11 }}>Eliminar</button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  if (isAdmin) {
-    const pending = visibleAdmin.filter(r => r.status === "pendiente").length;
-    return (
-      <div className="container">
-        <h2>Sugerencias e Incidencias</h2>
-        {pending > 0 && (
-          <div style={{ background:"#FFF3E0", border:"1px solid #FF9800", borderRadius:8, padding:"10px 14px", marginBottom:14, color:"#E65100", fontSize:13, fontWeight:600 }}>
-            {pending} reporte{pending > 1 ? "s" : ""} pendiente{pending > 1 ? "s" : ""} de gestionar
-          </div>
-        )}
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
-          <select className="input" style={{ flex:1, minWidth:130, marginBottom:0 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
-            <option value="">Todos los tipos</option>
-            {Object.entries(TYPE_LABELS).map(([k,v]) => <option key={k} value={k}>{TYPE_ICONS[k]} {v}</option>)}
-          </select>
-          <select className="input" style={{ flex:1, minWidth:130, marginBottom:0 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-            <option value="">Todos los estados</option>
-            {Object.entries(STATUS_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </div>
-        {visibleAdmin.length === 0 ? (
-          <div className="card" style={{ textAlign:"center", color:"#999", padding:28 }}>
-            <div style={{ fontSize:36, marginBottom:8 }}>📬</div>
-            <p>Sin reportes todavía.</p>
-          </div>
-        ) : (
-          visibleAdmin.map(r => renderReportCard(r, true))
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="container">
-      <h2>Sugerencias e Incidencias</h2>
-      <div className="nav-tabs" style={{ marginBottom:0 }}>
-        <button className={`nav-tab ${activeTab==="new"?"active":""}`} onClick={() => setActiveTab("new")}>Nuevo</button>
-        <button className={`nav-tab ${activeTab==="mine"?"active":""}`} onClick={() => setActiveTab("mine")}>
-          Mis envíos {myReports.length > 0 ? `(${myReports.length})` : ""}
-        </button>
-      </div>
-
-      {activeTab === "new" && (
-        <div style={{ marginTop:16 }}>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
-            {Object.entries(TYPE_LABELS).map(([t, label]) => (
-              <button key={t} type="button" onClick={() => { setFormType(t); resetForm(); }}
-                className={`btn btn-sm ${formType===t?"btn-primary":"btn-secondary"}`}>
-                {TYPE_ICONS[t]} {label}
-              </button>
-            ))}
-          </div>
-
-          {submitted && (
-            <div style={{ background:"#E8F5E9", border:"1px solid #4CAF50", borderRadius:8, padding:12, marginBottom:12, color:"#2E7D32", fontWeight:600 }}>
-              Enviado correctamente. Gracias.
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="card">
-            <h4 style={{ marginBottom:14 }}>{TYPE_ICONS[formType]} {TYPE_LABELS[formType]}</h4>
-
-            {formType === "confidencial" && (
-              <div style={{ background:"#FFF3E0", border:"1px solid #FFB74D", borderRadius:8, padding:"10px 12px", marginBottom:12, fontSize:12, color:"#795548" }}>
-                Este canal es para asuntos serios: conflictos, acoso o comportamientos inadecuados. Puedes enviarlo de forma completamente anónima.
-              </div>
-            )}
-
-            {formType === "incidencia" && (
-              <div className="form-group">
-                <label>Tipo de incidencia</label>
-                <select className="input" value={category} onChange={e => setCategory(e.target.value)} required>
-                  <option value="">Selecciona...</option>
-                  {INCIDENCIA_CATS.map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-            )}
-
-            <div className="form-group">
-              <label>
-                {formType === "incidencia" ? "Descripción (opcional)" :
-                 formType === "mejora" ? "Descripción de la mejora" :
-                 formType === "confidencial" ? "Describe la situación" : "Tu sugerencia"}
-              </label>
-              <textarea className="input" value={body} onChange={e => setBody(e.target.value)}
-                placeholder={
-                  formType === "sugerencia" ? "Ej: Creo que deberíamos cambiar el horario de limpieza..." :
-                  formType === "confidencial" ? "Describe con el detalle que consideres oportuno..." :
-                  formType === "mejora" ? "Ej: Falta cambiar el cartel de precios de la vitrina izquierda." :
-                  "Describe la incidencia..."
-                }
-                style={{ minHeight:100 }}
-                required={formType !== "incidencia"}
-              />
-            </div>
-
-            {(formType === "incidencia" || formType === "mejora") && (
-              <div className="form-group">
-                <label>Foto adjunta (opcional, máx. 1.5 MB)</label>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange}
-                  className="input" style={{ padding:"8px" }} />
-                {photo && (
-                  <div style={{ marginTop:8, position:"relative" }}>
-                    <img src={photo} alt="preview" style={{ maxWidth:"100%", maxHeight:160, borderRadius:8, objectFit:"cover" }} />
-                    <button type="button" onClick={() => { setPhoto(null); if (fileRef.current) fileRef.current.value = ""; }}
-                      style={{ position:"absolute", top:4, right:4, background:"rgba(0,0,0,0.6)", color:"white", border:"none", borderRadius:"50%", width:24, height:24, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {formType === "mejora" && (
-              <div className="form-group">
-                <label>Prioridad</label>
-                <div style={{ display:"flex", gap:8 }}>
-                  {[["baja","🟢"],["media","🟡"],["alta","🔴"]].map(([p, icon]) => (
-                    <button key={p} type="button" onClick={() => setPriority(p)}
-                      className={`btn btn-sm ${priority===p?"btn-primary":"btn-secondary"}`} style={{ flex:1 }}>
-                      {icon} {p.charAt(0).toUpperCase()+p.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(formType === "confidencial" || formType === "sugerencia") && (
-              <div className="form-group">
-                <label style={{ display:"flex", alignItems:"center", gap:10, fontWeight:"normal", cursor:"pointer" }}>
-                  <input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} />
-                  <span>Enviar anónimamente</span>
-                </label>
-                <p style={{ fontSize:12, color:"#666", marginTop:5 }}>
-                  {anonymous ? "No se guardará tu nombre." : `Tu nombre quedará registrado: ${userProfile.name}`}
-                </p>
-              </div>
-            )}
-
-            <button type="submit" className="btn btn-primary" style={{ width:"100%" }} disabled={submitting}>
-              {submitting ? "Enviando..." : "Enviar"}
-            </button>
-          </form>
-        </div>
-      )}
-
-      {activeTab === "mine" && (
-        <div style={{ marginTop:16 }}>
-          {myReports.length === 0 ? (
-            <div className="card" style={{ textAlign:"center", color:"#999", padding:28 }}>
-              <div style={{ fontSize:36, marginBottom:8 }}>📬</div>
-              <p>Aún no has enviado ningún reporte.</p>
-            </div>
-          ) : (
-            myReports.map(r => renderReportCard(r, false))
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -3424,7 +2952,6 @@ export default function App() {
           <button className={`nav-tab ${screen === "management" ? "active" : ""}`} onClick={() => setScreen("management")}>Gestión</button>
         </>}
         <button className={`nav-tab ${screen === "tasks" ? "active" : ""}`} onClick={() => setScreen("tasks")}>Tareas</button>
-        <button className={`nav-tab ${screen === "sugerencias" ? "active" : ""}`} onClick={() => setScreen("sugerencias")}>Sugerencias</button>
         {(userProfile.role === "admin" || userProfile.role === "manager") && <button className={`nav-tab ${screen === "schedule" ? "active" : ""}`} onClick={() => setScreen("schedule")}>Turnos</button>}
         <button className={`nav-tab ${screen === "miHorario" ? "active" : ""}`} onClick={() => setScreen("miHorario")}>Mi Horario</button>
         <button className={`nav-tab ${screen === "fichar" ? "active" : ""}`} onClick={() => setScreen("fichar")}>Fichar</button>
@@ -3441,8 +2968,7 @@ export default function App() {
       {screen === "employees" && <EmployeesScreen employees={employees} onOpenModal={setModalOpen} onSelectEmployee={setSelectedEmployee} />}
       {screen === "products" && <ProductsScreen products={products} onOpenModal={setModalOpen} onSelectProduct={setSelectedProduct} />}
       {screen === "management" && <ManagementScreen />}
-      {screen === "tasks" && <TasksScreen userProfile={userProfile} employees={employees} />}
-      {screen === "sugerencias" && <SugerenciasScreen userProfile={userProfile} employees={employees} />}
+      {screen === "tasks" && <TasksScreen userProfile={userProfile} />}
       {screen === "schedule" && <ShiftPlanningScreen employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} setRotationConfig={setRotationConfig} />}
       {screen === "vacation" && <VacationPlanningScreen employees={employees} updateEmployeeVacation={updateEmployeeVacation} userProfile={userProfile} vacationAssignments={vacationAssignments} signVacationAssignment={signVacationAssignment} />}
       {screen === "assignVacations" && <AssignVacationsScreen employees={employees} vacationAssignments={vacationAssignments} addVacationAssignment={addVacationAssignment} deleteVacationAssignment={deleteVacationAssignment} />}
