@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Component } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const styles = `
@@ -230,22 +230,6 @@ const styles = `
   .priority-baja { background: #E8F5E9; color: #2E7D32; }
   .tipo-nota { background: #E3F2FD; color: #1565C0; }
   .tipo-tarea { background: #FFF3E0; color: #E65100; }
-  .ai-banner { background: linear-gradient(135deg, #6B3410, #8B4513); color: white;
-    border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
-  .ai-banner h4 { margin-bottom: 6px; }
-  .ai-banner p { font-size: 13px; opacity: 0.9; }
-  .ai-result { background: white; border: 1px solid var(--border); border-left: 4px solid var(--primary);
-    border-radius: var(--radius-sm); padding: 16px; margin: 12px 0; font-size: 14px;
-    line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
-  .ai-chip { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px;
-    font-weight: 700; margin-left: 8px; vertical-align: middle; }
-  .ai-chip.on { background: #E8F5E9; color: #2E7D32; }
-  .ai-chip.off { background: #FFF3E0; color: #E65100; }
-  .forecast-row { display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 12px; border-bottom: 1px solid #EEE; font-size: 13px; gap: 8px; }
-  .forecast-row:last-child { border-bottom: none; }
-  .forecast-row .dia { font-weight: 600; min-width: 110px; }
-  .forecast-row .euro { font-weight: 700; color: var(--primary); }
   @media (max-width: 768px) {
     .home-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
@@ -256,7 +240,7 @@ const styles = `
 `;
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_VERSION = "6.0";
+const APP_VERSION = "5.3";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
@@ -372,7 +356,19 @@ const HOLIDAYS_BY_YEAR = {
 const getMadridHolidays = (year) => HOLIDAYS_BY_YEAR[year]?.madrid || [];
 const getSpainHolidays = (year) => HOLIDAYS_BY_YEAR[year]?.spain || [];
 
-// (v6.0) SEARCH_TRENDS eliminado: eran datos inventados sin uso. Sustituido por el módulo IA real.
+// Datos demo (etiquetados como tales en UI)
+const SEARCH_TRENDS = [
+  { term: "tarta cumpleaños alcorcón", volume: 820, trend: "up" },
+  { term: "pastelería cerca de mí", volume: 1450, trend: "up" },
+  { term: "palmera chocolate artesana", volume: 390, trend: "up" },
+  { term: "roscón de reyes madrid", volume: 2100, trend: "stable" },
+  { term: "tarta personalizada alcorcón", volume: 560, trend: "up" },
+  { term: "bollería artesanal", volume: 670, trend: "up" },
+  { term: "mejor pastelería alcorcón", volume: 340, trend: "up" },
+  { term: "pastelería pardilla opiniones", volume: 190, trend: "up" },
+  { term: "tarta sin gluten alcorcón", volume: 280, trend: "up" },
+  { term: "desayuno pastelería alcorcón", volume: 410, trend: "stable" },
+];
 
 const SHIFT_TEMPLATES_DEFAULT = {
   A: { L: null, M: null, X: { m1:"10:00",m2:"13:00",t1:"17:00",t2:"20:00" }, J: { m1:"09:00",m2:"14:00",t1:"17:00",t2:"20:45" }, V: { m1:"10:00",m2:"14:00",t1:"17:00",t2:"20:45" }, S: { m1:"10:00",m2:"15:00",t1:"17:00",t2:"20:00" }, D: { m1:"08:45",m2:"15:00",t1:"17:00",t2:"20:15" } },
@@ -647,424 +643,6 @@ function ConfirmModal({ title, message, confirmText = "Confirmar", cancelText = 
   );
 }
 
-// ─── MÓDULO IA (v6.0) ─────────────────────────────────────────────────────────
-// Integración real con la API de Claude (Anthropic) + modo local sin clave.
-// La clave API se guarda SOLO en este dispositivo (localStorage), nunca en Firestore.
-const AI_MODELS = [
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 — mejor calidad (recomendado)" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5 — más rápido y económico" },
-];
-function getAIConfig() { return safeLocalGet("pardilla_ai_config", { apiKey: "", model: AI_MODELS[0].id }); }
-function saveAIConfig(cfg) { safeLocalSet("pardilla_ai_config", cfg); }
-const aiEnabled = () => !!getAIConfig().apiKey;
-
-async function callClaude(system, user, maxTokens = 1500) {
-  const cfg = getAIConfig();
-  if (!cfg.apiKey) throw new Error("Sin clave API configurada. Ve a Asesor IA → Configuración.");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": cfg.apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: cfg.model || AI_MODELS[0].id,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
-    }),
-  });
-  if (!res.ok) {
-    let msg = `Error de la API (${res.status})`;
-    try { const j = await res.json(); msg = j?.error?.message || msg; } catch {}
-    throw new Error(msg);
-  }
-  const data = await res.json();
-  return (data.content || []).map(b => b.text || "").join("").trim();
-}
-
-const AI_SYSTEM_PROMPT = "Eres un consultor experto en pastelerías y panaderías artesanas de España. Asesoras a Pastelería Pardilla, una pastelería artesana de Alcorcón (Madrid) que lleva un año perdiendo clientes y facturación, con presupuesto muy ajustado. Responde SIEMPRE en español, con acciones concretas, realistas y baratas que el dueño pueda ejecutar esta misma semana. Usa secciones cortas con un emoji como título. Nada de teoría vacía.";
-
-// Suma de ventas por día (fecha -> total €)
-function totalesDiarios(ventas) {
-  const map = {};
-  ventas.forEach(v => { if (v.fecha && Number.isFinite(v.monto)) map[v.fecha] = (map[v.fecha] || 0) + v.monto; });
-  return map;
-}
-
-// Previsión de los próximos 7 días según la media por día de la semana (últimas 12 semanas)
-function previsionSemana(ventas) {
-  const daily = totalesDiarios(ventas);
-  const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
-  const desde = new Date(hoy); desde.setDate(desde.getDate() - 84);
-  const porDow = {};
-  Object.entries(daily).forEach(([fecha, total]) => {
-    const d = parseLocalDate(fecha);
-    if (!d || d < desde || d > hoy) return;
-    (porDow[d.getDay()] = porDow[d.getDay()] || []).push(total);
-  });
-  const dayNamesFull = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-  const medias = {};
-  Object.entries(porDow).forEach(([k, arr]) => { medias[k] = arr.reduce((a, b) => a + b, 0) / arr.length; });
-  const valores = Object.values(medias);
-  const mediaGlobal = valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : 0;
-  const filas = [];
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date(hoy); d.setDate(d.getDate() + i);
-    const fecha = toLocalDateStr(d);
-    const festivo = getMadridHolidays(d.getFullYear()).includes(fecha);
-    const media = medias[d.getDay()] ?? null;
-    filas.push({
-      fecha, dia: dayNamesFull[d.getDay()], media, festivo,
-      etiqueta: media === null ? "Sin histórico aún" : festivo ? "🎉 Festivo: prepara producción extra" : media >= mediaGlobal * 1.15 ? "💪 Día fuerte: sube producción" : media <= mediaGlobal * 0.85 ? "📉 Día flojo: ideal para una promo" : "Día normal",
-    });
-  }
-  return { filas, mediaGlobal, muestras: Object.keys(daily).length };
-}
-
-// Resumen de métricas reales del negocio (desde Firestore)
-function resumenNegocio(ventas, promociones, objetivos) {
-  const now = new Date();
-  const ym = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  const mesActual = ym(now);
-  const mesPrev = ym(new Date(now.getFullYear(), now.getMonth() - 1, 15));
-  let totalMes = 0, totalPrev = 0, totalHist = 0;
-  const porCategoria = {};
-  ventas.forEach(v => {
-    if (!Number.isFinite(v.monto)) return;
-    totalHist += v.monto;
-    porCategoria[v.categoria] = (porCategoria[v.categoria] || 0) + v.monto;
-    if ((v.fecha || "").startsWith(mesActual)) totalMes += v.monto;
-    if ((v.fecha || "").startsWith(mesPrev)) totalPrev += v.monto;
-  });
-  const catOrden = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
-  const growth = totalPrev > 0 ? ((totalMes - totalPrev) / totalPrev) * 100 : null;
-  const ticketMedio = ventas.length ? totalHist / ventas.length : 0;
-  const diaMes = now.getDate();
-  const diasMes = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const pace = objetivos.monthlyTarget > 0 ? (totalMes / objetivos.monthlyTarget) * 100 : null;
-  const paceEsperado = (diaMes / diasMes) * 100;
-  const promosActivas = promociones.filter(p => parseLocalDate(p.fin) >= now);
-  return { totalMes, totalPrev, growth, ticketMedio, catOrden, pace, paceEsperado, diaMes, diasMes, promosActivas, prevision: previsionSemana(ventas), nVentas: ventas.length };
-}
-
-function datosParaIA(r, products) {
-  return JSON.stringify({
-    ventas_mes_actual_eur: Math.round(r.totalMes),
-    ventas_mes_anterior_eur: Math.round(r.totalPrev),
-    variacion_pct: r.growth === null ? "sin datos" : Math.round(r.growth),
-    ticket_medio_eur: Number(r.ticketMedio.toFixed(2)),
-    objetivo_alcanzado_pct: r.pace === null ? "sin objetivo" : Math.round(r.pace),
-    avance_esperado_a_dia_de_hoy_pct: Math.round(r.paceEsperado),
-    ingresos_por_categoria: Object.fromEntries(r.catOrden.map(([c, v]) => [c, Math.round(v)])),
-    media_por_dia_semana: Object.fromEntries(r.prevision.filas.map(f => [f.dia, f.media === null ? "sin datos" : Math.round(f.media)])),
-    promociones_activas: r.promosActivas.map(p => `${p.nombre} (${p.descuento}% en ${p.categoria})`),
-    num_registros_ventas: r.nVentas,
-    carta: (products || []).slice(0, 25).map(p => `${p.name} ${p.price}€`),
-  });
-}
-
-const CONSEJOS_TEMPORADA = {
-  0: "Cierra bien la campaña del Roscón (hasta el 6) y prepara San Valentín: tartas para dos y dulces personalizados.",
-  1: "San Valentín (día 14) y Carnaval: packs pareja, dulces personalizados y bollería de feria.",
-  2: "Día del Padre (día 19) y arranque de torrijas de Cuaresma: anúncialas pronto, son tu producto estrella de temporada.",
-  3: "Semana Santa: torrijas a tope (encargos por bandeja) y primeras comuniones a la vista.",
-  4: "Día de la Madre (primer domingo) y comuniones: tartas personalizadas por encargo con señal/depósito.",
-  5: "Empieza el calor: meriendas frías, tarta helada, granizados y refuerza la tarde. Últimas comuniones del año.",
-  6: "Pleno verano: piezas individuales frías, encargos de cumpleaños y empuja la cafetería de las mañanas.",
-  7: "Mes valle: ajusta producción para no tirar género, cuadra vacaciones del equipo y prepara la vuelta al cole.",
-  8: "Vuelta al cole: packs de desayuno y merienda, bollería para llevar, ofertas a primera hora.",
-  9: "Prepara Huesos de Santo y buñuelos para Todos los Santos. Comunícalo desde la última semana del mes.",
-  10: "Buñuelos y huesos a pleno rendimiento y arranca la campaña de Navidad: encargos de troncos y dulces navideños.",
-  11: "Navidad: troncos y turrones artesanos, y ABRE LA RESERVA DE ROSCÓN antes del día 20: es tu mayor pico del año.",
-};
-
-function asesorLocal(r, now = new Date()) {
-  const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-  const L = [];
-  L.push("📊 DIAGNÓSTICO (modo local — activa la IA en Configuración para un plan 100% personalizado)");
-  L.push("");
-  if (r.nVentas === 0) {
-    L.push("Aún no hay ventas registradas. Apunta el cierre de caja de cada día en Gestión → Ventas: con 2-3 semanas de datos este análisis se vuelve útil de verdad.");
-    return L.join("\n");
-  }
-  L.push(`• Mes en curso: €${r.totalMes.toFixed(0)} (mes anterior: €${r.totalPrev.toFixed(0)})${r.growth !== null ? ` → ${r.growth >= 0 ? "+" : ""}${r.growth.toFixed(1)}%` : ""}`);
-  if (r.pace !== null) {
-    const gap = r.pace - r.paceEsperado;
-    L.push(`• Objetivo: llevas el ${r.pace.toFixed(0)}% y a día ${r.diaMes} deberías llevar ~${r.paceEsperado.toFixed(0)}%. ${gap >= 0 ? "Vas por delante ✅" : `Vas ${Math.abs(gap).toFixed(0)} puntos por detrás ⚠️`}`);
-  }
-  L.push(`• Ticket medio: €${r.ticketMedio.toFixed(2)}${r.ticketMedio > 0 && r.ticketMedio < 6 ? " — bajo: ofrece packs (café+bollo, bandejas) para subirlo" : ""}`);
-  if (r.catOrden.length > 1) {
-    L.push(`• Categoría fuerte: ${r.catOrden[0][0]} (€${r.catOrden[0][1].toFixed(0)}). Floja: ${r.catOrden[r.catOrden.length - 1][0]} (€${r.catOrden[r.catOrden.length - 1][1].toFixed(0)})`);
-  }
-  const conMedia = r.prevision.filas.filter(f => f.media !== null);
-  if (conMedia.length >= 3) {
-    const fuerte = [...conMedia].sort((a, b) => b.media - a.media)[0];
-    const flojo = [...conMedia].sort((a, b) => a.media - b.media)[0];
-    L.push(`• Día fuerte: ${fuerte.dia} (media €${fuerte.media.toFixed(0)}). Día flojo: ${flojo.dia} (media €${flojo.media.toFixed(0)}) → ideal para una promo solo ese día`);
-  }
-  if (r.promosActivas.length === 0) L.push("• Sin promociones activas: lanza al menos una para dar un motivo de visita esta semana.");
-  L.push("");
-  L.push(`🗓️ TEMPORADA — ${meses[now.getMonth()]}`);
-  L.push(CONSEJOS_TEMPORADA[now.getMonth()]);
-  L.push("");
-  L.push("✅ PLAN DE ACCIÓN ESTA SEMANA");
-  L.push("1. Google: pide una reseña a cada cliente satisfecho (tarjeta con QR junto a la caja) y responde TODAS las reseñas.");
-  L.push("2. WhatsApp Business: catálogo con tartas de encargo y lista de difusión semanal con la oferta.");
-  L.push("3. Instagram: mínimo 3 publicaciones/semana (usa la pestaña Contenido de esta pantalla).");
-  L.push("4. Promo del día flojo: oferta solo ese día para mover tráfico sin regalar margen toda la semana.");
-  L.push("5. Pack desayuno (café + pieza) a precio cerrado: sube el ticket y crea hábito diario.");
-  L.push("6. Encargos: teléfono y WhatsApp bien visibles en mostrador, bolsas, Google y redes.");
-  return L.join("\n");
-}
-
-async function generarContenidoIA(tipo, producto, products = []) {
-  const tipoLabel = { reel: "Reel de Instagram (vídeo corto)", short: "YouTube Short", post: "Post de Instagram/Facebook", story: "Story de Instagram" }[tipo] || "Post de Instagram";
-  const lista = (products || []).slice(0, 30).map(p => `${p.name} (${p.price}€)`).join(", ");
-  const user = `Crea un ${tipoLabel} para Pastelería Pardilla (Alcorcón, Madrid).
-Producto a destacar: ${producto || "elige tú el más apetecible para la temporada actual"}.
-Fecha de hoy: ${new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}.
-${lista ? `Carta real: ${lista}.` : ""}
-Incluye: gancho inicial, texto o guión completo listo para copiar, 8-10 hashtags locales de Alcorcón/Madrid, llamada a la acción y la mejor hora para publicarlo. Tono cercano y artesano.`;
-  return await callClaude(AI_SYSTEM_PROMPT, user, 1200);
-}
-
-function respuestaResenaLocal(texto) {
-  const t = (texto || "").toLowerCase();
-  const negativa = ["malo", "mala", "caro", "cara", "sucio", "sucia", "tarde", "frio", "frío", "fria", "fría", "duro", "dura", "decepcion", "decepción", "horrible", "peor", "nunca", "queja", "seco", "seca", "fatal", "lento", "lenta"].some(w => t.includes(w));
-  if (negativa) {
-    return "Sentimos mucho que tu experiencia no haya sido la que merecías. No es el nivel que queremos dar y nos lo tomamos muy en serio. Nos encantaría que nos dieras otra oportunidad: pásate por la tienda y pregunta por el encargado, queremos compensarte. Gracias por avisarnos, nos ayuda a mejorar. — Pastelería Pardilla";
-  }
-  return "¡Mil gracias por tomarte el tiempo de dejarnos esta reseña! 🥐 Nos alegra muchísimo que hayas disfrutado. Todo lo elaboramos de forma artesana cada mañana, y leer opiniones así es la mejor recompensa. ¡Te esperamos pronto con algo recién hecho! — Pastelería Pardilla";
-}
-
-function AsesorIAScreen({ products, userProfile, showNotification }) {
-  const [tab, setTab] = useState("asesor");
-  const [ventas, setVentas] = useState([]);
-  const [promociones, setPromociones] = useState([]);
-  const [objetivos, setObjetivos] = useState({ monthlyTarget: 5000 });
-  const [cfg, setCfg] = useState(getAIConfig());
-  const [loading, setLoading] = useState(false);
-  const [resultado, setResultado] = useState("");
-  const [tipoContenido, setTipoContenido] = useState("post");
-  const [productoSel, setProductoSel] = useState("");
-  const [contenido, setContenido] = useState("");
-  const [resena, setResena] = useState("");
-  const [tono, setTono] = useState("Cercano y agradecido");
-  const [respuesta, setRespuesta] = useState("");
-  const [testMsg, setTestMsg] = useState("");
-
-  useEffect(() => {
-    if (!fbReady()) return;
-    const unsubV = fb().firestore().collection("ventas").onSnapshot(snap => setVentas(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("ventas:", e));
-    const unsubP = fb().firestore().collection("promociones").onSnapshot(snap => setPromociones(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("promociones:", e));
-    const unsubO = fb().firestore().collection("config").doc("objetivos").onSnapshot(d => { if (d.exists) setObjetivos(d.data()); }, e => console.error("objetivos:", e));
-    return () => { unsubV(); unsubP(); unsubO(); };
-  }, []);
-
-  const r = resumenNegocio(ventas, promociones, objetivos);
-  const on = !!cfg.apiKey;
-  const tabs = ["asesor", "contenido", "resenas", "promos", "prevision", "config"];
-  const tabLabels = ["🧠 Asesor", "📣 Contenido", "⭐ Reseñas", "🏷️ Promos", "📈 Previsión", "⚙️ Configuración"];
-
-  const generarPlan = async () => {
-    setLoading(true); setResultado("");
-    try {
-      if (on) {
-        const user = `Fecha de hoy: ${new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.
-Datos reales del negocio (JSON): ${datosParaIA(r, products)}
-Dame: 1) Diagnóstico en 4-5 frases directas. 2) Plan de los próximos 7 días: 5-7 acciones priorizadas y concretas. 3) Una promoción lista para lanzar (nombre, descuento, categoría, fechas). 4) Un guión de post de Instagram con uno de los productos de la carta. 5) El error más probable que está cometiendo el negocio según estos datos.`;
-        setResultado(await callClaude(AI_SYSTEM_PROMPT, user, 2000));
-      } else {
-        setResultado(asesorLocal(r));
-      }
-    } catch (e) {
-      setResultado("⚠️ La IA no respondió (" + e.message + "). Mostrando análisis local:\n\n" + asesorLocal(r));
-    }
-    setLoading(false);
-  };
-
-  const generarContenido = async () => {
-    setLoading(true); setContenido("");
-    try {
-      if (on) setContenido(await generarContenidoIA(tipoContenido, productoSel || null, products));
-      else setContenido(generateDynamicContent(tipoContenido) + "\n\n(Plantilla local — activa la IA en Configuración para contenido único basado en tus productos reales)");
-    } catch (e) {
-      setContenido("⚠️ " + e.message + "\n\n" + generateDynamicContent(tipoContenido));
-    }
-    setLoading(false);
-  };
-
-  const generarRespuesta = async () => {
-    if (!resena.trim()) return;
-    setLoading(true); setRespuesta("");
-    try {
-      if (on) {
-        setRespuesta(await callClaude(AI_SYSTEM_PROMPT, `Reseña recibida en Google: «${resena}»\nEscribe la respuesta pública del dueño (máximo 120 palabras), tono ${tono.toLowerCase()}, en español. Si hay queja: disculpa sincera sin excusas e invitación concreta a volver. Firma: Pastelería Pardilla.`, 400));
-      } else setRespuesta(respuestaResenaLocal(resena));
-    } catch (e) {
-      setRespuesta("⚠️ " + e.message + "\n\n" + respuestaResenaLocal(resena));
-    }
-    setLoading(false);
-  };
-
-  const sugerencias = (() => {
-    const sug = [];
-    if (r.catOrden.length > 1) {
-      const [cat, val] = r.catOrden[r.catOrden.length - 1];
-      sug.push({ nombre: `Impulso ${cat}`, descuento: 20, categoria: cat, motivo: `«${cat}» es tu categoría con menos ingresos (€${val.toFixed(0)}). Un 20% durante una semana la pone en el radar de tus clientes.` });
-    }
-    const conMedia = r.prevision.filas.filter(f => f.media !== null);
-    if (conMedia.length >= 3) {
-      const flojo = [...conMedia].sort((a, b) => a.media - b.media)[0];
-      sug.push({ nombre: `${flojo.dia} dulce`, descuento: 15, categoria: "Bollería", motivo: `El ${flojo.dia.toLowerCase()} es tu día más flojo (media €${flojo.media.toFixed(0)}). Una oferta solo ese día atrae visitas sin regalar margen el resto de la semana.` });
-    }
-    sug.push({ nombre: "Pack desayuno", descuento: 10, categoria: "Cafetería", motivo: `Tu ticket medio es €${r.ticketMedio.toFixed(2)}. Café + pieza a precio cerrado sube el ticket y crea hábito de visita diaria.` });
-    return sug;
-  })();
-
-  const crearPromo = async (s) => {
-    try {
-      const ini = new Date(); ini.setDate(ini.getDate() + 1);
-      const fin = new Date(ini); fin.setDate(fin.getDate() + 6);
-      await fb().firestore().collection("promociones").add({ nombre: s.nombre, descuento: s.descuento, categoria: s.categoria, inicio: toLocalDateStr(ini), fin: toLocalDateStr(fin), timestamp: new Date().toISOString() });
-      showNotification(`Promoción «${s.nombre}» creada (7 días desde mañana)`);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
-  };
-
-  const guardarYProbar = async () => {
-    saveAIConfig(cfg);
-    setTestMsg("Guardado. Probando conexión…");
-    if (!cfg.apiKey) { setTestMsg("Clave vacía: la app funcionará en modo local."); return; }
-    try {
-      const out = await callClaude("Responde únicamente: OK", "ping", 10);
-      setTestMsg(out.toUpperCase().includes("OK") ? "✅ Conexión correcta — IA activada en toda la app" : "✅ Respuesta recibida: " + out);
-    } catch (e) { setTestMsg("❌ " + e.message); }
-  };
-
-  const copiar = (txt) => { navigator.clipboard?.writeText(txt); showNotification("Copiado al portapapeles"); };
-
-  return (
-    <div className="container">
-      <h2>🤖 Asesor IA <span className={`ai-chip ${on ? "on" : "off"}`}>{on ? "IA activada" : "Modo local"}</span></h2>
-      <p style={{ fontSize: 13, color: "#666", margin: "6px 0 12px" }}>Analiza tus datos reales de ventas y te ayuda a vender más: plan de acción, marketing, reseñas y previsión.</p>
-      <div className="nav-tabs">{tabs.map((t, i) => <button key={t} className={`nav-tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>{tabLabels[i]}</button>)}</div>
-
-      {tab === "asesor" && (
-        <div style={{ marginTop: 16 }}>
-          <div className="stat-grid">
-            <div className="stat-box"><div className="label">Mes en curso</div><div className="value" style={{ fontSize: 20 }}>€{r.totalMes.toFixed(0)}</div></div>
-            <div className="stat-box"><div className="label">Variación</div><div className="value" style={{ fontSize: 20, color: r.growth === null ? "#999" : r.growth >= 0 ? "#4CAF50" : "#F44336" }}>{r.growth === null ? "—" : `${r.growth >= 0 ? "+" : ""}${r.growth.toFixed(1)}%`}</div></div>
-            <div className="stat-box"><div className="label">Objetivo</div><div className="value" style={{ fontSize: 20 }}>{r.pace === null ? "—" : `${r.pace.toFixed(0)}%`}</div></div>
-            <div className="stat-box"><div className="label">Ticket medio</div><div className="value" style={{ fontSize: 20 }}>€{r.ticketMedio.toFixed(2)}</div></div>
-          </div>
-          <button className="btn btn-primary" style={{ width: "100%" }} onClick={generarPlan} disabled={loading}>{loading ? "Analizando tu negocio…" : on ? "✨ Generar diagnóstico y plan de acción con IA" : "Generar diagnóstico y plan de acción"}</button>
-          {resultado && (<>
-            <div className="ai-result">{resultado}</div>
-            <button className="btn btn-secondary btn-sm" onClick={() => copiar(resultado)}>📋 Copiar plan</button>
-          </>)}
-        </div>
-      )}
-
-      {tab === "contenido" && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 12 }}>
-            {["reel", "short", "post", "story"].map(t => (
-              <button key={t} className={`content-type-btn ${tipoContenido === t ? "active" : ""}`} style={{ marginBottom: 0 }} onClick={() => setTipoContenido(t)}>
-                {t === "reel" ? "🎬 Reel" : t === "short" ? "📺 Short" : t === "post" ? "📸 Post" : "📱 Story"}
-              </button>
-            ))}
-          </div>
-          <div className="form-group">
-            <label>Producto a destacar (opcional)</label>
-            <select className="input" value={productoSel} onChange={e => setProductoSel(e.target.value)}>
-              <option value="">— Que la IA elija según la temporada —</option>
-              {[...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.name}>{p.name} ({p.price.toFixed(2)}€)</option>)}
-            </select>
-          </div>
-          <button className="btn btn-primary" style={{ width: "100%" }} onClick={generarContenido} disabled={loading}>{loading ? "Creando contenido…" : on ? "✨ Crear contenido con IA" : "Crear contenido (plantilla local)"}</button>
-          {contenido && (<>
-            <div className="ai-result">{contenido}</div>
-            <button className="btn btn-secondary btn-sm" onClick={() => copiar(contenido)}>📋 Copiar</button>
-          </>)}
-        </div>
-      )}
-
-      {tab === "resenas" && (
-        <div style={{ marginTop: 16 }}>
-          <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>Pega una reseña de Google y genera una respuesta profesional. Responder reseñas (sobre todo las malas) mejora tu posición en Google Maps y recupera clientes.</p>
-          <div className="form-group">
-            <label>Reseña del cliente</label>
-            <textarea className="input" rows={4} style={{ resize: "vertical" }} placeholder="Pega aquí la reseña…" value={resena} onChange={e => setResena(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label>Tono</label>
-            <select className="input" value={tono} onChange={e => setTono(e.target.value)}>
-              {["Cercano y agradecido", "Profesional y formal", "Con humor amable"].map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <button className="btn btn-primary" style={{ width: "100%" }} onClick={generarRespuesta} disabled={loading || !resena.trim()}>{loading ? "Redactando…" : on ? "✨ Redactar respuesta con IA" : "Redactar respuesta (plantilla)"}</button>
-          {respuesta && (<>
-            <div className="ai-result">{respuesta}</div>
-            <button className="btn btn-secondary btn-sm" onClick={() => copiar(respuesta)}>📋 Copiar respuesta</button>
-          </>)}
-        </div>
-      )}
-
-      {tab === "promos" && (
-        <div style={{ marginTop: 16 }}>
-          <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>Promociones sugeridas a partir de tus datos reales. Con un toque se crean en el gestor de promociones (activas desde mañana, 7 días).</p>
-          {r.nVentas === 0 && <div className="demo-banner">Registra ventas en Gestión → Ventas para que las sugerencias se basen en tus datos reales.</div>}
-          {sugerencias.map((s, i) => (
-            <div key={i} className="idea-card">
-              <div className="title">🏷️ {s.nombre} — {s.descuento}% en {s.categoria}</div>
-              <p style={{ fontSize: 13, color: "#555", margin: "6px 0 10px" }}>{s.motivo}</p>
-              <button className="btn btn-success btn-sm" onClick={() => crearPromo(s)}>＋ Crear esta promoción</button>
-            </div>
-          ))}
-          <p style={{ fontSize: 12, color: "#999", marginTop: 8 }}>💡 Para una campaña completa (cartel, textos, mecánica), usa la pestaña Asesor con la IA activada.</p>
-        </div>
-      )}
-
-      {tab === "prevision" && (
-        <div style={{ marginTop: 16 }}>
-          <h3 style={{ marginBottom: 4 }}>Previsión próximos 7 días</h3>
-          <p style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>Media por día de la semana sobre las últimas 12 semanas de ventas registradas ({r.prevision.muestras} días con datos). Úsala para ajustar producción y no tirar género.</p>
-          <div className="card" style={{ padding: "4px 8px" }}>
-            {r.prevision.filas.map(f => (
-              <div key={f.fecha} className="forecast-row">
-                <span className="dia">{f.dia} {parseLocalDate(f.fecha).getDate()}</span>
-                <span className="euro">{f.media === null ? "—" : `~€${f.media.toFixed(0)}`}</span>
-                <span style={{ fontSize: 12, color: "#666", textAlign: "right", flex: 1 }}>{f.etiqueta}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === "config" && (
-        <div style={{ marginTop: 16 }}>
-          <div className="card">
-            <h4 style={{ marginBottom: 10 }}>Clave API de Anthropic (Claude)</h4>
-            <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>Crea una clave en <strong>console.anthropic.com</strong> (pago por uso, céntimos por consulta) y pégala aquí. Con la clave puesta, toda la app usa IA real; sin ella funciona en modo local. La clave se guarda solo en este dispositivo.</p>
-            <div className="form-group"><label>Clave API</label><input type="password" className="input" placeholder="sk-ant-…" value={cfg.apiKey} onChange={e => setCfg(c => ({ ...c, apiKey: e.target.value.trim() }))} /></div>
-            <div className="form-group"><label>Modelo</label>
-              <select className="input" value={cfg.model} onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}>
-                {AI_MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
-            </div>
-            <button className="btn btn-primary" style={{ width: "100%" }} onClick={guardarYProbar}>Guardar y probar conexión</button>
-            {testMsg && <p style={{ fontSize: 13, marginTop: 10, fontWeight: 600 }}>{testMsg}</p>}
-            <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>⚠️ Consejo de seguridad: pon un límite de gasto mensual bajo (p. ej. 5-10 €) en console.anthropic.com → Billing, y no compartas la clave. Si algún día la app se hace pública en internet, conviene mover las llamadas a una Cloud Function.</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── COMPONENTS ──────────────────────────────────────────────────────────────
 
 function SetupScreen({ onConfigSet }) {
@@ -1176,7 +754,7 @@ function HomeScreen({ userProfile, onNavigate }) {
   const getCards = () => {
     if (userProfile.role === "admin") return [
       { icon: "👥", label: "Empleados", screen: "employees" },{ icon: "🍰", label: "Productos", screen: "products" },
-      { icon: "📊", label: "Gestión", screen: "management" },{ icon: "🤖", label: "Asesor IA", screen: "ia" },{ icon: "✓", label: "Tareas", screen: "tasks" },
+      { icon: "📊", label: "Gestión", screen: "management" },{ icon: "✓", label: "Tareas", screen: "tasks" },
       { icon: "🛠", label: "Sugerencias", screen: "sugerencias" },{ icon: "🏪", label: "Turnos", screen: "schedule" },
       { icon: "📅", label: "Mi Horario", screen: "miHorario" },{ icon: "🕐", label: "Fichar", screen: "fichar" },
       { icon: "🏖️", label: "Vacaciones", screen: "vacation" },{ icon: "📋", label: "Asignar Vacaciones", screen: "assignVacations" },
@@ -1185,7 +763,7 @@ function HomeScreen({ userProfile, onNavigate }) {
     ];
     if (userProfile.role === "manager") return [
       { icon: "👥", label: "Empleados", screen: "employees" },{ icon: "🍰", label: "Productos", screen: "products" },
-      { icon: "📊", label: "Gestión", screen: "management" },{ icon: "🤖", label: "Asesor IA", screen: "ia" },{ icon: "✓", label: "Tareas", screen: "tasks" },
+      { icon: "📊", label: "Gestión", screen: "management" },{ icon: "✓", label: "Tareas", screen: "tasks" },
       { icon: "🛠", label: "Sugerencias", screen: "sugerencias" },{ icon: "🏪", label: "Turnos", screen: "schedule" },
       { icon: "📅", label: "Mi Horario", screen: "miHorario" },{ icon: "🕐", label: "Fichar", screen: "fichar" },
       { icon: "🏖️", label: "Vacaciones", screen: "vacation" },
@@ -1253,18 +831,11 @@ function ContentGenerator() {
   const [content, setContent] = useState("");
   const [emailTo, setEmailTo] = useState("");
   const [showEmail, setShowEmail] = useState(false);
-  const [genLoading, setGenLoading] = useState(false);
 
-  // v6.0: usa IA real si hay clave configurada; si no, plantilla local
-  const handleGenerate = async () => {
+  const handleGenerate = () => {
+    const c = generateDynamicContent(contentType);
+    setContent(c);
     setShowEmail(false);
-    if (aiEnabled()) {
-      setGenLoading(true);
-      try { setContent(await generarContenidoIA(contentType, null)); setGenLoading(false); return; }
-      catch (e) { console.warn("IA no disponible, usando plantilla:", e); }
-      setGenLoading(false);
-    }
-    setContent(generateDynamicContent(contentType));
   };
 
   const handleSendEmail = () => {
@@ -1285,7 +856,7 @@ function ContentGenerator() {
           </button>
         ))}
       </div>
-      <button className="btn btn-primary" style={{ width: "100%", marginBottom: "16px" }} onClick={handleGenerate} disabled={genLoading}>{genLoading ? "Generando con IA…" : aiEnabled() ? "✨ Generar con IA" : "Generar Contenido"}</button>
+      <button className="btn btn-primary" style={{ width: "100%", marginBottom: "16px" }} onClick={handleGenerate}>Generar Contenido</button>
       {content && (
         <>
           <div className="result-box">{content}</div>
@@ -1311,7 +882,7 @@ function ContentGenerator() {
 
 // ─── MANAGEMENT (con Firestore para ventas/promos/objetivos) ─────────────────
 // FIX #17: tareas, ventas, promos y objetivos en Firestore en lugar de localStorage
-function ManagementScreen({ onNavigate }) {
+function ManagementScreen() {
   const [activeTab, setActiveTab] = useState("stats");
   const [ventas, setVentas] = useState([]);
   const [promociones, setPromociones] = useState([]);
@@ -1320,7 +891,7 @@ function ManagementScreen({ onNavigate }) {
   const [promoForm, setPromoForm] = useState({ nombre: "", descuento: "", categoria: "Bollería", inicio: "", fin: "" });
   const [montoError, setMontoError] = useState("");
   const tabs = ["stats","analysis","suggestions","content","ventas","promociones","objetivos"];
-  const tabLabels = ["Estadísticas","Análisis","Sugerencias","Contenidos","Ventas","Promociones","Objetivos"];
+  const tabLabels = ["Estadísticas","Análisis IA","Sugerencias","Contenidos","Ventas","Promociones","Objetivos"];
 
   useEffect(() => {
     if (!fbReady()) return;
@@ -1441,10 +1012,6 @@ function ManagementScreen({ onNavigate }) {
         <div style={{ marginTop: "20px" }}>
           <h3 style={{ marginBottom: 4 }}>Análisis del Negocio</h3>
           <p style={{ fontSize: 12, color: "#999", marginBottom: 16 }}>Métricas operativas calculadas desde las ventas y promociones registradas.</p>
-          <div className="ai-banner" onClick={() => onNavigate && onNavigate("ia")} style={{ cursor: "pointer" }}>
-            <h4>🤖 Nuevo: Asesor IA</h4>
-            <p>Diagnóstico completo, plan de acción semanal, previsión de ventas, promos sugeridas y marketing automático. Toca aquí para abrirlo.</p>
-          </div>
           {ventas.length === 0 ? (
             <div className="card" style={{ textAlign:"center", color:"#999", padding:32 }}>
               <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
@@ -1578,7 +1145,7 @@ function ManagementScreen({ onNavigate }) {
           </div>
           <div className="stat-grid" style={{ marginTop: "16px" }}>
             <div className="stat-box"><div className="label">Ticket Medio</div><div className="value" style={{ fontSize: "18px" }}>€{ventas.length > 0 ? (ventas.reduce((s, v) => s + v.monto, 0) / ventas.length).toFixed(2) : "0.00"}</div></div>
-            <div className="stat-box"><div className="label">Mes anterior (real)</div><div className="value" style={{ fontSize: "18px" }}>€{lastMonthVentas.toFixed(2)}</div></div>
+            <div className="stat-box"><div className="label">Mes Anterior</div><div className="value" style={{ fontSize: "18px" }}>€{Number(objetivos.previousMonthSales || 0).toFixed(2)}</div></div>
             <div className="stat-box"><div className="label">Categoría Top</div><div className="value" style={{ fontSize: "14px" }}>{ventas.length > 0 ? Object.entries(ventas.reduce((acc, v) => ({...acc, [v.categoria]: (acc[v.categoria] || 0) + v.monto}), {})).sort((a, b) => b[1] - a[1])[0][0] : "-"}</div></div>
           </div>
         </div>
@@ -3510,7 +3077,7 @@ function SugerenciasScreen({ userProfile, employees }) {
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
-function AppInner() {
+export default function App() {
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -3855,7 +3422,6 @@ function AppInner() {
           <button className={`nav-tab ${screen === "employees" ? "active" : ""}`} onClick={() => setScreen("employees")}>Empleados</button>
           <button className={`nav-tab ${screen === "products" ? "active" : ""}`} onClick={() => setScreen("products")}>Productos</button>
           <button className={`nav-tab ${screen === "management" ? "active" : ""}`} onClick={() => setScreen("management")}>Gestión</button>
-          <button className={`nav-tab ${screen === "ia" ? "active" : ""}`} onClick={() => setScreen("ia")}>🤖 Asesor IA</button>
         </>}
         <button className={`nav-tab ${screen === "tasks" ? "active" : ""}`} onClick={() => setScreen("tasks")}>Tareas</button>
         <button className={`nav-tab ${screen === "sugerencias" ? "active" : ""}`} onClick={() => setScreen("sugerencias")}>Sugerencias</button>
@@ -3874,8 +3440,7 @@ function AppInner() {
       {screen === "home" && <HomeScreen userProfile={userProfile} onNavigate={setScreen} />}
       {screen === "employees" && <EmployeesScreen employees={employees} onOpenModal={setModalOpen} onSelectEmployee={setSelectedEmployee} />}
       {screen === "products" && <ProductsScreen products={products} onOpenModal={setModalOpen} onSelectProduct={setSelectedProduct} />}
-      {screen === "management" && <ManagementScreen onNavigate={setScreen} />}
-      {screen === "ia" && (userProfile.role === "admin" || userProfile.role === "manager") && <AsesorIAScreen products={products} userProfile={userProfile} showNotification={showNotification} />}
+      {screen === "management" && <ManagementScreen />}
       {screen === "tasks" && <TasksScreen userProfile={userProfile} employees={employees} />}
       {screen === "sugerencias" && <SugerenciasScreen userProfile={userProfile} employees={employees} />}
       {screen === "schedule" && <ShiftPlanningScreen employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} setRotationConfig={setRotationConfig} />}
@@ -3903,25 +3468,3 @@ if (typeof document !== "undefined" && !document.getElementById("pardilla-styles
   styleTag.textContent = styles;
   document.head.appendChild(styleTag);
 }
-
-// ─── ERROR BOUNDARY (v6.0) ────────────────────────────────────────────────────
-class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(error) { return { error }; }
-  componentDidCatch(error, info) { console.error("ErrorBoundary:", error, info); }
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="login-screen"><div className="login-card">
-          <div className="login-logo"><div className="icon">🥐</div><h2>Algo ha fallado</h2></div>
-          <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>Se ha producido un error inesperado. Tus datos están a salvo en la nube; recarga para continuar.</p>
-          <pre style={{ fontSize: 11, background: "#f5f5f5", padding: 10, borderRadius: 8, overflow: "auto", maxHeight: 120, marginBottom: 16 }}>{String(this.state.error)}</pre>
-          <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => window.location.reload()}>Recargar aplicación</button>
-        </div></div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-export default function App() { return <ErrorBoundary><AppInner /></ErrorBoundary>; }
