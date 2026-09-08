@@ -63,10 +63,11 @@ const styles = `
   .form-error { color: var(--danger); font-size: 12px; margin-top: -8px; margin-bottom: 8px; }
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
-  .login-screen { display: flex; min-height: 100vh; align-items: center;
-    justify-content: center; background: linear-gradient(135deg, var(--primary-dark), var(--primary)); }
+  .login-screen { display: flex; flex-direction: column; min-height: 100vh; align-items: center;
+    justify-content: center; background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    padding: 24px 16px; overflow-y: auto; }
   .login-card { background: white; border-radius: var(--radius); padding: 32px;
-    width: 90%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    width: 100%; max-width: 400px; flex-shrink: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
   .login-logo { text-align: center; margin-bottom: 24px; }
   .login-logo .icon { font-size: 64px; }
   .login-logo h2 { color: var(--primary); margin-top: 8px; }
@@ -222,7 +223,7 @@ const styles = `
   .breadcrumb { font-size: 13px; color: #666; margin-bottom: 12px; }
   .breadcrumb a { color: var(--primary); cursor: pointer; text-decoration: none; }
   .breadcrumb a:hover { text-decoration: underline; }
-  .copyright-notice { text-align: center; color: rgba(255,255,255,0.72); font-size: 11px; margin-top: 18px; line-height: 1.6; padding: 0 4px; }
+  .copyright-notice { width: 100%; max-width: 400px; text-align: center; color: rgba(255,255,255,0.72); font-size: 11px; margin-top: 18px; line-height: 1.6; padding: 0 4px; }
   .copyright-notice strong { color: rgba(255,255,255,0.92); display: block; margin-bottom: 2px; }
   .report-card { background: var(--card-bg); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 10px; }
   .priority-alta { background: #FFEBEE; color: #C62828; }
@@ -256,7 +257,7 @@ const styles = `
 `;
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_VERSION = "6.0";
+const APP_VERSION = "6.1";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
