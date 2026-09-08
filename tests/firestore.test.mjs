@@ -71,3 +71,26 @@ test('time entries cannot impersonate others, and cannot be edited or deleted', 
   await assertFails(db('admin').doc('registros_horarios/good').update({time:'09:00'}));
   await assertFails(db('admin').doc('registros_horarios/good').delete());
 });
+test('a worker can file a signed regularisation, but never on top of the original', async () => {
+  // Entrada que quedó sin cerrar.
+  const abierta = { userId:'alice', employeeId:1, type:'entrada', date:'2026-09-07', time:'17:00', signature:'data:image/png;base64,AA' };
+  await assertSucceeds(db('alice').doc('registros_horarios/abierta').set(abierta));
+
+  // La subsanación es un apunte NUEVO que enlaza con la entrada abierta y
+  // distingue la hora declarada del momento en que se apuntó.
+  const subsanacion = {
+    userId:'alice', employeeId:1, type:'salida', date:'2026-09-07', time:'20:45',
+    signature:'data:image/png;base64,AA',
+    regularizacion:true, corrigeA:'abierta', motivo:'olvido_salida',
+    origenCorreccion:'empleado', fechaFichaje:'2026-09-08T09:12:00.000Z',
+    declaracionResponsabilidad:true,
+  };
+  await assertSucceeds(db('alice').doc('registros_horarios/subsanacion').set(subsanacion));
+
+  // Y sigue sin poder tocarse el original: corregir es añadir, nunca sobrescribir.
+  await assertFails(db('alice').doc('registros_horarios/abierta').update({ time:'18:00' }));
+  await assertFails(db('alice').doc('registros_horarios/abierta').delete());
+
+  // Nadie puede subsanar la jornada de otro.
+  await assertFails(db('bob').doc('registros_horarios/ajena').set({ ...subsanacion }));
+});

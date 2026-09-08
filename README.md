@@ -38,6 +38,7 @@ src/
   App.jsx            Toda la aplicación (pantallas, modales y estilos)
   firebase.js        Carga del SDK, config por entorno y conexión a emuladores
   lib/core.js        Lógica pura: fechas, rotación de turnos, versiones
+  lib/jornada.js     Análisis del registro horario y detección de olvidos
   lib/vacations.js   Firma de vacaciones (transacción atómica firma + saldo)
   lib/*.test.js      Tests de esa lógica
   main.jsx           Punto de entrada
@@ -174,7 +175,7 @@ Y el aviso de actualización se dispara al escribir en Firestore, así que ese p
 va el último: si se hace antes, el botón "Actualizar ahora" lleva a algo que
 todavía no existe.
 
-1. **Subir la versión** en `src/App.jsx` → `const APP_VERSION = "6.2";`
+1. **Subir la versión** en `src/App.jsx` → `const APP_VERSION = "6.3";`
 2. **Comprobaciones** (los tests de reglas necesitan el JDK 21, ver arriba)
    ```bash
    npm ci
@@ -197,12 +198,12 @@ todavía no existe.
    npx cap sync android
    # generar el APK firmado desde Android Studio
    ```
-6. **Release en GitHub** con etiqueta `v6.2` y el APK como adjunto, para que
+6. **Release en GitHub** con etiqueta `v6.3` y el APK como adjunto, para que
    `releases/latest` apunte a un archivo real.
 7. **Último paso — activar el aviso**: en Firestore, documento
    `config/app_version`:
    ```json
-   { "version": "6.2", "apkUrl": "<url del APK>", "webUrl": "https://pasteleria-pardilla.web.app" }
+   { "version": "6.3", "apkUrl": "<url del APK>", "webUrl": "https://pasteleria-pardilla.web.app" }
    ```
 
 ---
@@ -219,6 +220,51 @@ todavía no existe.
 
 Los datos de Firestore **no** se revierten con el código: si un despliegue
 escribiera datos incorrectos, hay que restaurarlos desde una exportación.
+
+---
+
+## Registro horario: qué hacer con los olvidos
+
+Es el punto donde más sistemas fallan. La regla de oro: **nunca se cierra una
+jornada automáticamente**. El art. 34.9 del ET exige la *hora concreta* de inicio
+y fin; una salida inventada a una hora fija no es un hecho, y un registro con
+horas fabricadas se vuelve en contra de la empresa en cuanto alguien lo mira de
+cerca.
+
+Lo que sí es válido es **dejarlo abierto y subsanarlo con traza**:
+
+1. La app detecta las entradas sin salida de los últimos 14 días y avisa al
+   trabajador en su pantalla de fichar, con un botón para cerrarlas.
+2. El trabajador declara la hora real (se le propone el fin de su turno, pero
+   puede cambiarla), la acepta y **la firma**. Esa es la prueba más sólida: nadie
+   discute después una hora que él mismo declaró y firmó.
+3. El apunte se guarda como un registro **nuevo**, nunca editando el original —
+   que sigue siendo inmutable por reglas. Lleva `corrigeA` (a qué entrada
+   corrige), `motivo`, `origenCorreccion` y, sobre todo, dos tiempos distintos:
+
+   | Campo | Significa |
+   |---|---|
+   | `time` | La hora **declarada**: cuándo terminó de verdad |
+   | `fechaFichaje` | El momento **del apunte**: cuándo se rellenó |
+
+   Que se vean por separado es lo que lo hace defendible. Un apunte creado a las
+   09:12 declarando una salida de las 20:45 es correcto si consta como
+   regularización firmada; es fraude si se disfraza de fichaje normal.
+4. En **Fichar → (admin)** tienes un panel de incidencias del periodo buscado con
+   las jornadas que nadie cerró. El CSV exporta toda la trazabilidad.
+
+**Lo que todavía tienes que hacer tú, fuera de la app:** redactar el *documento de
+organización del registro* (art. 34.9: convenio, acuerdo de empresa o decisión
+del empresario previa consulta a los representantes). Un folio que diga qué
+sistema se usa, cómo se ficha, qué se hace ante un olvido, quién puede
+regularizar, cómo accede el trabajador a sus datos y cuánto se conservan. Tener
+la app perfecta sin ese papel es cumplir media obligación. Revisa además si tu
+convenio de pastelería exige registrar las pausas.
+
+> Esto es criterio técnico de diseño, no asesoramiento jurídico. El marco del
+> art. 34.9 es estable desde 2019, pero el registro horario ha estado en reforma
+> activa. Confirma con tu gestoría o un graduado social antes de darlo por
+> cerrado.
 
 ---
 

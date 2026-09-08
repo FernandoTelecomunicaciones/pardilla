@@ -1,7 +1,7 @@
 import { csvCell, createRecord } from "./lib/records.js";
 import { firebaseConfig, connectEmulators } from "./firebase.js";
 import { signVacation } from "./lib/vacations.js";
-import { useState, useEffect, useRef, useCallback, Component } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 import {
   parseLocalDate,
   toLocalDateStr,
@@ -10,6 +10,7 @@ import {
   getCurrentShift,
   isNewerVersion,
 } from "./lib/core.js";
+import { analizarJornada, jornadasSinCerrar, formatearDuracion, esRegularizacion, minutosDeHora } from "./lib/jornada.js";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const styles = `
@@ -268,7 +269,7 @@ const styles = `
 `;
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_VERSION = "6.2";
+const APP_VERSION = "6.3";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
@@ -2224,7 +2225,7 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
 
 // FIX #3, #5, #15, #31, #47, #48: fichaje robusto con histórico, validación pastry, hash, etc.
 function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, pastryTemplates, showNotification }) {
-  const [registros, setRegistros] = useState([]);
+  const [registrosVentana, setRegistrosVentana] = useState([]);
   const [loadingRegistros, setLoadingRegistros] = useState(userProfile.role !== "admin");
   // La fecha se refresca sola: si la app se queda abierta y pasa la medianoche,
   // el listener y el formulario tienen que apuntar ya al día nuevo.
@@ -2249,6 +2250,8 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
   const [retroTime, setRetroTime] = useState("08:00");
   const [retroType, setRetroType] = useState("entrada");
   const [retroAccepted, setRetroAccepted] = useState(false);
+  // Entrada abierta que se está subsanando (null = fichaje retroactivo suelto).
+  const [cerrandoEntrada, setCerrandoEntrada] = useState(null);
   const [showFueraTurnoModal, setShowFueraTurnoModal] = useState(false);
   const [fueraTurnoAccepted, setFueraTurnoAccepted] = useState(false);
   const [fueraTurnoInfo, setFueraTurnoInfo] = useState({ currentTime: "", shiftLetter: "-", horarioPrevisto: "" });
@@ -2270,18 +2273,41 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
   const DAY_KEYS = ["D","L","M","X","J","V","S"];
   const toMins = (t) => { const [h,m] = t.split(":").map(Number); return h*60+m; };
 
-  // FIX #3: cargar registros del día actual al montar
+  // FIX #3: cargar registros del día actual al montar.
+  // Se carga una ventana de 14 días en vez de solo hoy, para poder detectar
+  // jornadas que quedaron sin cerrar. Es la misma consulta (userId + rango de
+  // date) y usa el mismo índice compuesto, así que no cuesta nada más.
+  const VENTANA_DIAS = 14;
+  const desdeVentana = useMemo(() => {
+    const d = parseLocalDate(selectedDate);
+    if (!d) return selectedDate;
+    d.setDate(d.getDate() - VENTANA_DIAS);
+    return toLocalDateStr(d);
+  }, [selectedDate]);
+
   useEffect(() => {
     if (isAdmin || !fbReady() || !userProfile.uid) return;
     const unsub = fb().firestore().collection("registros_horarios")
       .where("userId", "==", userProfile.uid)
-      .where("date", "==", selectedDate)
+      .where("date", ">=", desdeVentana)
+      .where("date", "<=", selectedDate)
       .onSnapshot(snap => {
-        setRegistros(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setRegistrosVentana(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         setLoadingRegistros(false);
       }, err => { console.error("registros sync:", err); setLoadingRegistros(false); });
     return () => unsub();
-  }, [isAdmin, userProfile.uid, selectedDate]);
+  }, [isAdmin, userProfile.uid, selectedDate, desdeVentana]);
+
+  // Los del día, para la pantalla de fichar.
+  const registros = useMemo(
+    () => registrosVentana.filter(r => r.date === selectedDate),
+    [registrosVentana, selectedDate]
+  );
+  // Días anteriores con una entrada sin su salida: el olvido que hay que subsanar.
+  const sinCerrar = useMemo(
+    () => jornadasSinCerrar(registrosVentana, selectedDate),
+    [registrosVentana, selectedDate]
+  );
 
   // Obtiene el slot efectivo según tipo de empleado y temporada
   const getEffectiveSlot = (emp, dateStr) => {
@@ -2402,7 +2428,32 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
     setSubmittingFichaje(false);
   };
 
-  const handleOpenRetro = () => { setRetroDate(""); setRetroTime("08:00"); setRetroType("entrada"); setRetroAccepted(false); retroSign.reset(); setShowRetroModal(true); };
+  const handleOpenRetro = () => { setRetroDate(""); setRetroTime("08:00"); setRetroType("entrada"); setRetroAccepted(false); setCerrandoEntrada(null); retroSign.reset(); setShowRetroModal(true); };
+
+  // Subsanar una jornada que quedó abierta. Se abre el mismo modal, pero ya
+  // apuntando a la entrada concreta que hay que cerrar: así el apunte nuevo
+  // queda enlazado con ella (`corrigeA`) y la trazabilidad es explícita, no
+  // deducida por quien revise el registro.
+  const handleCerrarJornada = (entradaAbierta) => {
+    setCerrandoEntrada(entradaAbierta);
+    setRetroDate(entradaAbierta.date);
+    setRetroType("salida");
+    // Propuesta de hora: el fin de turno previsto ese día. El trabajador la
+    // confirma o la cambia — nunca se guarda sola.
+    const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
+    const slot = linkedEmp ? getEffectiveSlot(linkedEmp, entradaAbierta.date) : null;
+    const inicio = minutosDeHora(entradaAbierta.time);
+    // De los dos finales de turno del día (mañana y tarde), se propone el primero
+    // que sea posterior a la entrada que quedó abierta.
+    const candidatos = [slot?.m2, slot?.t2].filter(h => {
+      const m = minutosDeHora(h);
+      return m !== null && inicio !== null && m > inicio;
+    });
+    setRetroTime(candidatos[0] || "");
+    setRetroAccepted(false);
+    retroSign.reset();
+    setShowRetroModal(true);
+  };
 
   const handleConfirmRetro = async () => {
     if (submittingFichaje) return;
@@ -2410,27 +2461,67 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
     if (!retroTime) { showNotification("Indica la hora del fichaje", "warning"); return; }
     if (!retroAccepted) { showNotification("Debes aceptar la declaración de responsabilidad", "warning"); return; }
     if (!retroSign.hasSigned) { showNotification("Por favor, firma la declaración", "warning"); return; }
+    // Al cerrar una jornada abierta, la salida tiene que ser posterior a la
+    // entrada: si no, quedaría un tramo de duración imposible en el registro.
+    if (cerrandoEntrada) {
+      const ini = minutosDeHora(cerrandoEntrada.time);
+      const fin = minutosDeHora(retroTime);
+      if (fin === null) { showNotification("La hora no es válida", "warning"); return; }
+      if (ini !== null && fin <= ini) {
+        showNotification(`La salida debe ser posterior a la entrada de las ${cerrandoEntrada.time}h`, "warning");
+        return;
+      }
+    }
     setSubmittingFichaje(true);
     try {
       const signature = canvasToCompressed(retroCanvasRef.current);
       const now = new Date();
       const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
       const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
-      const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber olvidado registrar el fichaje de ${retroType} del día ${retroDate} a las ${retroTime}h. El olvido fue por causa propia y la empresa no tiene responsabilidad al respecto.`;
-      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: retroDate, type: retroType, time: retroTime, timestamp: now.toISOString(), retroactivo: true, declaracionResponsabilidad: true, fechaFichaje: now.toISOString(), textoDeclaracion };
+      const textoDeclaracion = cerrandoEntrada
+        ? `El empleado/a ${employeeName} declara bajo su responsabilidad que el día ${retroDate} finalizó su jornada a las ${retroTime}h, habiendo olvidado registrar la salida correspondiente a la entrada de las ${cerrandoEntrada.time}h. Declara que la hora indicada es la real.`
+        : `El empleado/a ${employeeName} declara bajo su responsabilidad haber olvidado registrar el fichaje de ${retroType} del día ${retroDate} a las ${retroTime}h. El olvido fue por causa propia y la empresa no tiene responsabilidad al respecto.`;
+      const base = {
+        userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName,
+        date: retroDate, type: retroType,
+        // `time` es la hora DECLARADA (cuándo ocurrió) y `fechaFichaje` el momento
+        // real del apunte. Tienen que verse por separado: un apunte hecho hoy que
+        // declara una salida de ayer es válido si consta como tal, y solo como tal.
+        time: retroTime, timestamp: now.toISOString(),
+        retroactivo: true, regularizacion: true,
+        declaracionResponsabilidad: true, fechaFichaje: now.toISOString(), textoDeclaracion,
+        origenCorreccion: "empleado",
+        ...(cerrandoEntrada ? { corrigeA: cerrandoEntrada.id, motivo: "olvido_salida" } : {}),
+      };
       const integrityHash = await digestRecord(base);
       const registro = { ...base, signature, integrityHash };
       await fb().firestore().collection("registros_horarios").add(registro);
       setShowRetroModal(false);
-      showNotification("Fichaje retroactivo registrado");
-    } catch (e) { showNotification("Error al guardar: " + e.message, "error"); }
+      setCerrandoEntrada(null);
+      showNotification(cerrandoEntrada ? "Jornada cerrada y firmada" : "Fichaje retroactivo registrado");
+    } catch (e) { showNotification(mensajeConsulta(e, "el registro"), "error"); }
     setSubmittingFichaje(false);
   };
 
   // FIX #30: filename del CSV con rango real
   const downloadCSV = (records, fromDate, toDate) => {
-    const header = "Fecha;Empleado;Tipo;Hora Real;Hora Turno;Dentro Tolerancia;Retroactivo;Decl. Responsabilidad;Con Firma;Hash Integridad;Timestamp\n";
-    const rows = records.map(r => [r.date,r.employeeName,r.type,r.time,r.scheduledTime||"",r.withinTolerance?"Sí":"No",r.retroactivo?"Sí":"No",r.declaracionResponsabilidad||r.declaracionFueraTurno?"Sí":"No",r.signature?"Sí":"No",r.integrityHash||"",r.timestamp].map(csvCell).join(";")).join("\n");
+    // El CSV es lo que acaba en manos de una inspección o de una reclamación,
+    // así que tiene que dejar ver la diferencia entre la hora declarada y el
+    // momento en que se apuntó, y a qué entrada corrige cada regularización.
+    const header = "Fecha;Empleado;Tipo;Hora Declarada;Hora Turno;Dentro Tolerancia;Regularizado;Motivo;Corrige Registro;Apuntado El;Origen;Decl. Responsabilidad;Con Firma;Hash Integridad;Timestamp\n";
+    const rows = records.map(r => [
+      r.date, r.employeeName, r.type, r.time, r.scheduledTime || "",
+      r.withinTolerance ? "Sí" : "No",
+      esRegularizacion(r) ? "Sí" : "No",
+      r.motivo || "",
+      r.corrigeA || "",
+      r.fechaFichaje || "",
+      r.origenCorreccion || "",
+      r.declaracionResponsabilidad || r.declaracionFueraTurno ? "Sí" : "No",
+      r.signature ? "Sí" : "No",
+      r.integrityHash || "",
+      r.timestamp,
+    ].map(csvCell).join(";")).join("\n");
     const blob = new Blob(["﻿" + header + rows], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `registro_horario_${fromDate||"x"}_${toDate||"x"}.csv`; a.click();
@@ -2472,6 +2563,26 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
   };
 
   const dayRegistros = registros;
+  const jornadaHoy = useMemo(() => analizarJornada(registros), [registros]);
+
+  // Incidencias del periodo que el admin acaba de buscar: se agrupa por
+  // empleado y día, y se analiza cada jornada por separado. Se excluye el día de
+  // hoy, que aún puede estar en curso.
+  const incidenciasAdmin = useMemo(() => {
+    const hoy = toLocalDateStr(new Date());
+    const grupos = {};
+    for (const r of adminRegistros) {
+      if (!r?.date || r.date >= hoy) continue;
+      const clave = `${r.date}||${r.employeeName || "—"}`;
+      (grupos[clave] = grupos[clave] || []).push(r);
+    }
+    return Object.entries(grupos)
+      .flatMap(([clave, regs]) => {
+        const [fecha, empleado] = clave.split("||");
+        return analizarJornada(regs).abiertas.map(a => ({ fecha, empleado, hora: a.time }));
+      })
+      .sort((a, b) => b.fecha.localeCompare(a.fecha) || a.empleado.localeCompare(b.empleado));
+  }, [adminRegistros]);
   const retroMinDate = (() => { const d = new Date(); d.setDate(d.getDate()-7); return toLocalDateStr(d); })();
   const retroMaxDate = (() => { const d = new Date(); d.setDate(d.getDate()-1); return toLocalDateStr(d); })();
   const linkedEmpName = (() => { const e = employees.find(emp => emp.id === userProfile.linkedEmployeeId); return e ? e.name : userProfile.name; })();
@@ -2484,19 +2595,60 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       </div>
       {!isAdmin ? (
         <>
+          {/* Jornadas que quedaron abiertas. El aviso va lo primero y con acción
+              directa: cuanto antes lo cierre el propio trabajador firmando, más
+              sólido es el registro. Nunca se cierra solo. */}
+          {sinCerrar.length > 0 && (
+            <div className="card" style={{ background: "#FFEBEE", borderLeft: "4px solid #F44336", marginBottom: 16 }}>
+              <h3 style={{ color: "#C62828", marginBottom: 8, fontSize: 16 }}>
+                ⚠️ {sinCerrar.length === 1 ? "Tienes una jornada sin cerrar" : `Tienes ${sinCerrar.length} jornadas sin cerrar`}
+              </h3>
+              <p style={{ fontSize: 13, color: "#5D4037", marginBottom: 12 }}>
+                Fichaste la entrada pero no la salida. Indica la hora real a la que terminaste
+                y fírmala para completar tu registro horario.
+              </p>
+              {sinCerrar.map(dia => dia.abiertas.map(entrada => (
+                <div key={entrada.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid #FFCDD2" }}>
+                  <span style={{ fontSize: 14 }}>
+                    <strong>{dia.fecha}</strong> · entrada a las {entrada.time}h, sin salida
+                  </span>
+                  <button className="btn btn-primary btn-sm" onClick={() => handleCerrarJornada(entrada)} disabled={submittingFichaje}>
+                    Cerrar jornada
+                  </button>
+                </div>
+              )))}
+            </div>
+          )}
+
           <div className="card"><label style={{ marginBottom: "12px", display: "block", fontWeight: "600" }}>Fecha (Hoy)</label><input type="date" className="input" value={selectedDate} disabled /></div>
           <button className="fichar-btn fichar-entrada" onClick={() => handleFichar("entrada")} disabled={submittingFichaje}>⬆️ Fichar Entrada</button>
           <button className="fichar-btn fichar-salida" onClick={() => handleFichar("salida")} disabled={submittingFichaje}>⬇️ Fichar Salida</button>
           <button className="fichar-btn" style={{ background: "#FF9800", color: "white" }} onClick={handleOpenRetro} disabled={submittingFichaje}>📅 Fichar Día Anterior</button>
           <button className="fichar-btn" style={{ background: "#2196F3", color: "white" }} onClick={handleOpenHistory}>📜 Ver mi histórico</button>
           <div className="card">
-            <h3 style={{ marginBottom: "12px" }}>Registros del día</h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <h3>Registros del día</h3>
+              {/* Solo suma tramos cerrados: una entrada sin salida no aporta horas. */}
+              {dayRegistros.length > 0 && (
+                <span style={{ fontSize: 13, color: "#666" }}>
+                  Trabajado hoy: <strong style={{ color: "var(--primary)" }}>{formatearDuracion(jornadaHoy.minutos)}</strong>
+                  {jornadaHoy.abiertas.length > 0 && <span style={{ color: "#E65100" }}> · jornada en curso</span>}
+                </span>
+              )}
+            </div>
             {loadingRegistros ? <p style={{ color: "#999" }}>Cargando...</p> : dayRegistros.length === 0 ? <p style={{ color: "#999" }}>No hay registros para esta fecha</p> : [...dayRegistros].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(r => (
               <div key={r.id} className="registro-card" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 <strong>{r.type === "entrada" ? "⬆️ Entrada" : "⬇️ Salida"}</strong>
                 <span>{r.time}</span>
                 {r.scheduledTime && <span style={{ fontSize: "11px", color: "#2E7D32", background: "#E8F5E9", padding: "2px 6px", borderRadius: "10px" }}>Turno: {r.scheduledTime}</span>}
-                {r.retroactivo && <span style={{ fontSize: "11px", color: "#E65100", background: "#FFF3E0", padding: "2px 6px", borderRadius: "10px" }}>📅 Retroactivo</span>}
+                {/* Un apunte corregido no puede parecer un fichaje hecho en el
+                    momento: se marca, y se muestra cuándo se apuntó de verdad. */}
+                {esRegularizacion(r) && (
+                  <span style={{ fontSize: "11px", color: "#E65100", background: "#FFF3E0", padding: "2px 6px", borderRadius: "10px" }}
+                    title={r.fechaFichaje ? `Apuntado el ${new Date(r.fechaFichaje).toLocaleString("es-ES")}` : undefined}>
+                    ✍️ Regularizado
+                  </span>
+                )}
                 {r.fueraTolerancia && <span style={{ fontSize: "11px", color: "#C62828", background: "#FFCDD2", padding: "2px 6px", borderRadius: "10px" }}>⚠️ Fuera</span>}
                 {r.signature && <img src={r.signature} alt="firma" className="firma-img" onClick={() => setViewSignature(r.signature)} title="Ver firma" />}
               </div>
@@ -2516,6 +2668,45 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
             </div>
             <button className="btn btn-primary" onClick={handleAdminSearch} style={{ width: "100%" }}>Buscar</button>
           </div>
+
+          {/* Incidencias del periodo buscado: jornadas que nadie cerró. Es lo
+              primero que hay que mirar, porque son los huecos del registro. */}
+          {adminSearched && (
+            <div className="card" style={incidenciasAdmin.length > 0
+              ? { background: "#FFEBEE", borderLeft: "4px solid #F44336" }
+              : { background: "#E8F5E9", borderLeft: "4px solid #4CAF50" }}>
+              <h3 style={{ marginBottom: 8, fontSize: 16, color: incidenciasAdmin.length > 0 ? "#C62828" : "#2E7D32" }}>
+                {incidenciasAdmin.length > 0
+                  ? `⚠️ ${incidenciasAdmin.length} jornada${incidenciasAdmin.length > 1 ? "s" : ""} sin cerrar`
+                  : "✓ Sin incidencias: todas las jornadas del periodo están cerradas"}
+              </h3>
+              {incidenciasAdmin.length > 0 && (
+                <>
+                  <p style={{ fontSize: 13, color: "#5D4037", marginBottom: 10 }}>
+                    Entradas sin su salida. Pide al trabajador que las cierre desde su pantalla de
+                    fichar: la subsanación firmada por él es la prueba más sólida.
+                  </p>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead><tr style={{ borderBottom: "2px solid #FFCDD2" }}>
+                        <th style={{ padding: 6, textAlign: "left" }}>Fecha</th>
+                        <th style={{ padding: 6, textAlign: "left" }}>Empleado</th>
+                        <th style={{ padding: 6, textAlign: "left" }}>Entrada sin cerrar</th>
+                      </tr></thead>
+                      <tbody>{incidenciasAdmin.map(i => (
+                        <tr key={`${i.fecha}-${i.empleado}-${i.hora}`} style={{ borderBottom: "1px solid #FFCDD2" }}>
+                          <td style={{ padding: 6 }}>{i.fecha}</td>
+                          <td style={{ padding: 6 }}>{i.empleado}</td>
+                          <td style={{ padding: 6 }}>{i.hora}h</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {adminSearched && (
             <div className="card">
               <h3 style={{ marginBottom: "12px" }}>Resultados ({adminRegistros.length})</h3>
@@ -2607,17 +2798,45 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       {showRetroModal && (
         <div className="modal">
           <div className="modal-content">
-            <div className="modal-header"><span>📅 Fichaje Día Anterior</span><button className="modal-close" onClick={() => setShowRetroModal(false)}>×</button></div>
-            <div className="form-group"><label htmlFor="field-30">Fecha del fichaje olvidado</label><input id="field-30" type="date" className="input" value={retroDate} min={retroMinDate} max={retroMaxDate} onChange={e => setRetroDate(e.target.value)} /></div>
-            <div className="form-group"><label htmlFor="field-31">Tipo de fichaje</label>
-              <select id="field-31" className="input" value={retroType} onChange={e => setRetroType(e.target.value)}>
-                <option value="entrada">⬆️ Entrada</option><option value="salida">⬇️ Salida</option>
-              </select>
+            <div className="modal-header">
+              <span>{cerrandoEntrada ? "🔒 Cerrar jornada sin salida" : "📅 Fichaje Día Anterior"}</span>
+              <button className="modal-close" onClick={() => { setShowRetroModal(false); setCerrandoEntrada(null); }}>×</button>
             </div>
-            <div className="form-group"><label htmlFor="field-32">Hora real del fichaje</label><input id="field-32" type="time" className="input" value={retroTime} onChange={e => setRetroTime(e.target.value)} /></div>
+
+            {/* Cerrando una jornada concreta: la fecha y el tipo ya están fijados
+                por la entrada que quedó abierta, así que no se dejan editar. */}
+            {cerrandoEntrada ? (
+              <div className="card" style={{ background: "#FFF8E1", marginBottom: 12, padding: 12 }}>
+                <p style={{ fontSize: 13, margin: 0 }}>
+                  Día <strong>{cerrandoEntrada.date}</strong> · fichaste la entrada a las <strong>{cerrandoEntrada.time}h</strong> y no registraste la salida.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="form-group"><label htmlFor="field-30">Fecha del fichaje olvidado</label><input id="field-30" type="date" className="input" value={retroDate} min={retroMinDate} max={retroMaxDate} onChange={e => setRetroDate(e.target.value)} /></div>
+                <div className="form-group"><label htmlFor="field-31">Tipo de fichaje</label>
+                  <select id="field-31" className="input" value={retroType} onChange={e => setRetroType(e.target.value)}>
+                    <option value="entrada">⬆️ Entrada</option><option value="salida">⬇️ Salida</option>
+                  </select>
+                </div>
+              </>
+            )}
+            <div className="form-group">
+              <label htmlFor="field-32">{cerrandoEntrada ? "¿A qué hora terminaste realmente?" : "Hora real del fichaje"}</label>
+              <input id="field-32" type="time" className="input" value={retroTime} onChange={e => setRetroTime(e.target.value)} />
+              {cerrandoEntrada && (
+                <p style={{ fontSize: 12, color: "#666", marginTop: -6 }}>
+                  Proponemos la hora de fin de tu turno. Cámbiala si terminaste a otra hora: debe ser la real.
+                </p>
+              )}
+            </div>
             <div style={{ background: "#FFF3E0", border: "1px solid #FF9800", borderRadius: "8px", padding: "12px", marginBottom: "12px", fontSize: "12px", color: "#5D4037", lineHeight: "1.6" }}>
               <strong>Declaración de responsabilidad:</strong><br /><br />
-              Yo, <em>{linkedEmpName}</em>, declaro bajo mi responsabilidad haber olvidado registrar el fichaje de <strong>{retroType}</strong> del día <strong>{retroDate || "..."}</strong> a las <strong>{retroTime || "..."}</strong> horas. Asumo que el olvido del fichaje fue por causa propia y que la empresa no tiene ninguna responsabilidad al respecto.
+              {cerrandoEntrada ? (
+                <>Yo, <em>{linkedEmpName}</em>, declaro que el día <strong>{cerrandoEntrada.date}</strong> finalicé mi jornada a las <strong>{retroTime || "..."}</strong> horas, habiendo olvidado registrar la salida correspondiente a la entrada de las <strong>{cerrandoEntrada.time}</strong> horas. Declaro que la hora indicada es la real.</>
+              ) : (
+                <>Yo, <em>{linkedEmpName}</em>, declaro bajo mi responsabilidad haber olvidado registrar el fichaje de <strong>{retroType}</strong> del día <strong>{retroDate || "..."}</strong> a las <strong>{retroTime || "..."}</strong> horas. Asumo que el olvido del fichaje fue por causa propia y que la empresa no tiene ninguna responsabilidad al respecto.</>
+              )}
             </div>
             <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", marginBottom: "12px", fontSize: "13px", cursor: "pointer" }}>
               <input type="checkbox" checked={retroAccepted} onChange={e => setRetroAccepted(e.target.checked)} style={{ marginTop: "3px", flexShrink: 0 }} />
