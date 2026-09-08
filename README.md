@@ -156,11 +156,25 @@ A partir de ahí el resto de usuarios se crean desde **Usuarios** dentro de la a
 
 Requisito: `npm install -g firebase-tools` y `firebase login`.
 
-**El orden importa.** El aviso de actualización se dispara al escribir en
-Firestore, así que ese paso va el último: si se hace antes, el botón
-"Actualizar ahora" lleva a algo que todavía no existe.
+**El orden importa, y hay dos reglas que no se pueden saltar:**
 
-1. **Subir la versión** en `src/App.jsx` → `const APP_VERSION = "6.1";`
+1. **Los índices, siempre los primeros.** Son aditivos: habilitan consultas y
+   nunca deniegan nada, así que desplegarlos antes de tiempo no rompe nada.
+   Desplegarlos tarde, en cambio, deja pantallas con el error "The query requires
+   an index".
+2. **Las reglas van con el código, no antes.** Las reglas están acopladas a las
+   consultas que hace el cliente: si publicas reglas nuevas mientras los
+   empleados siguen con la versión anterior instalada, sus consultas dejan de
+   estar permitidas y esas pantallas se quedan vacías. Publica primero la web (y
+   distribuye el APK, si lo usan) y las reglas **a la vez o justo después**.
+   Cuando cambies reglas y consultas en la misma versión, coordina el paso: los
+   usuarios con el APK antiguo no pueden "recargar" para actualizarse.
+
+Y el aviso de actualización se dispara al escribir en Firestore, así que ese paso
+va el último: si se hace antes, el botón "Actualizar ahora" lleva a algo que
+todavía no existe.
+
+1. **Subir la versión** en `src/App.jsx` → `const APP_VERSION = "6.2";`
 2. **Comprobaciones** (los tests de reglas necesitan el JDK 21, ver arriba)
    ```bash
    npm ci
@@ -169,26 +183,26 @@ Firestore, así que ese paso va el último: si se hace antes, el botón
    npx firebase emulators:exec --only auth,firestore --project demo-pardilla "node --test tests/firestore.test.mjs"
    npm run build
    ```
-3. **Reglas e índices de Firestore** (antes que la web, para que los datos ya
-   estén protegidos cuando entre el código nuevo):
+3. **Índices de Firestore** (primero, son inocuos):
    ```bash
-   firebase deploy --only firestore:rules,firestore:indexes
+   firebase deploy --only firestore:indexes
    ```
-4. **Web**
+   Tardan unos minutos en construirse en colecciones grandes.
+4. **Web y reglas, juntas** (ver la advertencia de arriba):
    ```bash
-   firebase deploy --only hosting
+   firebase deploy --only hosting,firestore:rules
    ```
 5. **Android** (si se distribuye APK)
    ```bash
    npx cap sync android
    # generar el APK firmado desde Android Studio
    ```
-6. **Release en GitHub** con etiqueta `v6.1` y el APK como adjunto, para que
+6. **Release en GitHub** con etiqueta `v6.2` y el APK como adjunto, para que
    `releases/latest` apunte a un archivo real.
 7. **Último paso — activar el aviso**: en Firestore, documento
    `config/app_version`:
    ```json
-   { "version": "6.1", "apkUrl": "<url del APK>", "webUrl": "https://pasteleria-pardilla.web.app" }
+   { "version": "6.2", "apkUrl": "<url del APK>", "webUrl": "https://pasteleria-pardilla.web.app" }
    ```
 
 ---

@@ -268,7 +268,7 @@ const styles = `
 `;
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_VERSION = "6.1";
+const APP_VERSION = "6.2";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
@@ -596,6 +596,28 @@ async function digestRecord(payload) {
   } catch { return null; }
 }
 
+// Traduce los errores de Firestore a algo que un empleado pueda entender y sobre
+// lo que pueda actuar. Los errores crudos de Firebase traen enlaces a la consola
+// y el identificador del proyecto: ni le sirven a quien está en el mostrador ni
+// deberían enseñarse fuera del equipo. El detalle técnico va a la consola del
+// navegador, donde el administrador sí puede consultarlo.
+function mensajeConsulta(error, accion = "la búsqueda") {
+  console.error("Operación de Firestore fallida:", error);
+  switch (error?.code) {
+    case "failed-precondition":
+      return "Esta búsqueda todavía no está disponible. Avisa al administrador: falta publicar un índice en Firestore.";
+    case "permission-denied":
+      return "No tienes permiso para hacer esto.";
+    case "not-found":
+      return "El dato ya no existe. Actualiza la pantalla.";
+    case "unavailable":
+    case "deadline-exceeded":
+      return "Sin conexión con el servidor. Comprueba tu conexión y vuelve a intentarlo.";
+    default:
+      return `No se pudo completar ${accion}. Inténtalo de nuevo en unos segundos.`;
+  }
+}
+
 // FIX #13: Modal de confirmación reusable (sustituye window.confirm/prompt)
 function ConfirmModal({ title, message, confirmText = "Confirmar", cancelText = "Cancelar", danger, requireText, onConfirm, onCancel }) {
   const [typed, setTyped] = useState("");
@@ -915,7 +937,7 @@ Dame: 1) Diagnóstico en 4-5 frases directas. 2) Plan de los próximos 7 días: 
       const fin = new Date(ini); fin.setDate(fin.getDate() + 6);
       await fb().firestore().collection("promociones").add({ nombre: s.nombre, descuento: s.descuento, categoria: s.categoria, inicio: toLocalDateStr(ini), fin: toLocalDateStr(fin), timestamp: new Date().toISOString() });
       showNotification(`Promoción «${s.nombre}» creada (7 días desde mañana)`);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    } catch (e) { showNotification(mensajeConsulta(e, "crear la promoción"), "error"); }
   };
 
   const guardarYProbar = async () => {
@@ -2424,7 +2446,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       if (selectedEmployee) results = results.filter(r => r.employeeName === selectedEmployee);
       results.sort((a,b) => (a.timestamp||"").localeCompare(b.timestamp||""));
       setAdminRegistros(results);
-    } catch (e) { showNotification("Error al buscar: " + e.message, "error"); }
+    } catch (e) { showNotification(mensajeConsulta(e), "error"); }
   };
 
   // FIX #47: histórico para empleado
@@ -2446,7 +2468,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
         .get();
       const results = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp||"").localeCompare(a.timestamp||""));
       setHistoryRegistros(results);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    } catch (e) { showNotification(mensajeConsulta(e), "error"); }
   };
 
   const dayRegistros = registros;
@@ -3682,13 +3704,13 @@ function AppInner() {
     try {
       await fb().firestore().collection("employees").doc(String(emp.id)).set(emp);
       setEmployees(prev => { const list = prev.map(e => e.id === emp.id ? emp : e); safeLocalSet("pardilla_employees", list); return list; });
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    } catch (e) { showNotification(mensajeConsulta(e, "guardar el empleado"), "error"); }
   };
   const removeEmployee = async (id) => {
     try {
       await fb().firestore().collection("employees").doc(String(id)).delete();
       setEmployees(prev => { const list = prev.filter(e => e.id !== id); safeLocalSet("pardilla_employees", list); return list; });
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    } catch (e) { showNotification(mensajeConsulta(e, "eliminar el empleado"), "error"); }
   };
   const addEmployee = async (data) => {
     try { await createRecord(fb().firestore(), "employees", data); return true; }
@@ -3703,7 +3725,7 @@ function AppInner() {
   const updateProduct = async (prod) => {
     try {
       await fb().firestore().collection("products").doc(String(prod.id)).set(prod);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    } catch (e) { showNotification(mensajeConsulta(e, "guardar el producto"), "error"); }
   };
   const addProduct = async (data) => {
     try { await createRecord(fb().firestore(), "products", data); return true; }
@@ -3711,11 +3733,11 @@ function AppInner() {
   };
   const addVacationAssignment = async (a) => {
     try { await fb().firestore().collection("vacationAssignments").doc(a.id).set(a); }
-    catch (e) { showNotification("Error: " + e.message, "error"); }
+    catch (e) { showNotification(mensajeConsulta(e, "asignar las vacaciones"), "error"); }
   };
   const deleteVacationAssignment = async (id) => {
     try { await fb().firestore().collection("vacationAssignments").doc(id).delete(); }
-    catch (e) { showNotification("Error: " + e.message, "error"); }
+    catch (e) { showNotification(mensajeConsulta(e, "eliminar la asignación"), "error"); }
   };
   const signVacationAssignment = async (a, signatureData) => {
     try { await signVacation(fb().firestore(), a.id, signatureData); }

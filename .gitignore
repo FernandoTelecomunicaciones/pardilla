@@ -31,3 +31,6 @@ eslint-report.json
 *.njsproj
 *.sln
 *.sw?
+
+# Cache de despliegue de Firebase
+.firebase/
