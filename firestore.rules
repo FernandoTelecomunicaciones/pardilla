@@ -1,0 +1,189 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pastelería Pardilla — reglas de seguridad de Firestore
+//
+// IMPORTANTE: esta app es 100% cliente (React + Firebase compat). Los checks de
+// rol que hay en React son SOLO para la interfaz: cualquiera puede saltárselos
+// desde la consola del navegador. La autorización real vive aquí.
+//
+// Regla de oro de Firestore: LAS REGLAS NO SON FILTROS. Si una consulta del
+// cliente puede devolver aunque sea un documento no permitido, la consulta
+// entera falla. Por eso las consultas de src/App.jsx y estas reglas deben
+// mantenerse alineadas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasProfile() {
+      return isAuth() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return hasProfile() ? userDoc().role : '';
+    }
+
+    function isAdmin() {
+      return role() == 'admin';
+    }
+
+    function isStaff() {
+      return role() in ['admin', 'manager'];
+    }
+
+    // Clave con la que el cliente firma sus reports: String(linkedEmployeeId) o,
+    // si no está vinculado a ningún empleado, su propio uid.
+    // Debe coincidir con `String(userProfile.linkedEmployeeId || "") || uid`.
+    function myEmpKey() {
+      return hasProfile() && userDoc().linkedEmployeeId != null
+        ? string(userDoc().linkedEmployeeId)
+        : request.auth.uid;
+    }
+
+    // ── users ────────────────────────────────────────────────────────────────
+    // El rol vive aquí, así que escribir esta colección es escalar privilegios.
+    // Solo un admin puede crear/modificar/borrar usuarios. El PRIMER admin se
+    // siembra a mano desde la consola de Firebase (ver README).
+    match /users/{uid} {
+      allow get: if isAuth() && (request.auth.uid == uid || isStaff());
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    function validVacationDebit(id) {
+      let assignmentId = request.resource.data.lastVacationAssignmentId;
+      let path = /databases/$(database)/documents/vacationAssignments/$(assignmentId);
+      let before = get(path).data;
+      let after = getAfter(path).data;
+      return hasProfile() && string(userDoc().linkedEmployeeId) == id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vacationDays', 'lastVacationAssignmentId'])
+        && before.employeeId == userDoc().linkedEmployeeId
+        && before.status == 'pending' && after.status == 'signed'
+        && before.days is number && before.days > 0
+        && request.resource.data.vacationDays == resource.data.vacationDays - before.days;
+    }
+
+    // ── employees ────────────────────────────────────────────────────────────
+    match /employees/{id} {
+      allow read: if hasProfile();
+      allow create, delete: if isStaff();
+      allow update: if isStaff() || validVacationDebit(id);
+
+    }
+
+    // ── products ─────────────────────────────────────────────────────────────
+    match /products/{id} {
+      allow read: if hasProfile();
+      allow write: if isStaff();
+    }
+
+    // ── shiftConfig (rotación y plantillas de turnos) ────────────────────────
+    match /shiftConfig/{doc} {
+      allow read: if hasProfile();
+      allow write: if isStaff();
+    }
+
+    // ── registros_horarios (fichajes + firma) ────────────────────────────────
+    // Registro horario legal (RDL 8/2019): se conserva 4 años y es INMUTABLE.
+    // Nadie puede editarlo ni borrarlo desde la app, ni siquiera un admin; si
+    // hubiera que rectificar algo, se hace desde la consola de Firebase y queda
+    // constancia. Cada empleado solo puede crear fichajes a su propio nombre.
+    match /registros_horarios/{id} {
+      allow create: if hasProfile()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.employeeId == userDoc().linkedEmployeeId
+                    && request.resource.data.type in ['entrada', 'salida']
+                    && request.resource.data.date is string
+                    && request.resource.data.time is string
+                    && request.resource.data.signature is string
+                    && request.resource.data.signature.size() < 200000;
+      allow get, list: if hasProfile()
+                       && (resource.data.userId == request.auth.uid || isStaff());
+      allow update, delete: if false;
+    }
+
+    // ── vacationAssignments ──────────────────────────────────────────────────
+    // El admin asigna; el empleado solo puede FIRMAR su propia asignación.
+    match /vacationAssignments/{id} {
+      allow read: if hasProfile();
+      allow create, delete: if isAdmin();
+      allow update: if hasProfile()
+        && (isAdmin() || userDoc().linkedEmployeeId == resource.data.employeeId)
+        && resource.data.status == 'pending'
+        && request.resource.data.status == 'signed'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'signatureData', 'signedAt'])
+        && request.resource.data.signatureData is string
+        && request.resource.data.signatureData.size() < 200000
+        && getAfter(/databases/$(database)/documents/employees/$(string(resource.data.employeeId))).data.vacationDays
+          == get(/databases/$(database)/documents/employees/$(string(resource.data.employeeId))).data.vacationDays - resource.data.days;
+
+    }
+
+    // ── tasks ────────────────────────────────────────────────────────────────
+    // NOTA: el cliente descarga todas las tareas y filtra en memoria, así que
+    // la lectura tiene que ser abierta a personal autenticado. Ver "Limitación
+    // conocida" en el README: las notas privadas ("assignedTo == self") NO son
+    // privadas frente a otro empleado que mire la consola del navegador.
+    match /tasks/{id} {
+      function assignedToMe() {
+        return resource.data.assignedTo in ['all', string(userDoc().linkedEmployeeId)];
+      }
+      allow read: if hasProfile() && (isStaff() || resource.data.createdBy == request.auth.uid || assignedToMe());
+      allow create: if hasProfile() && request.resource.data.createdBy == request.auth.uid
+        && (isStaff() || request.resource.data.assignedTo == 'self');
+      allow update: if hasProfile() && (isStaff() || resource.data.createdBy == request.auth.uid || assignedToMe())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completed', 'completedAt']);
+      allow delete: if hasProfile() && (isStaff() || resource.data.createdBy == request.auth.uid);
+    }
+
+    // ── reports (incidencias, sugerencias, confidenciales) ───────────────────
+    // Contiene denuncias confidenciales y anónimas: la lectura NO puede ser
+    // abierta. Un empleado solo ve los suyos (consulta filtrada por employeeId
+    // en el cliente); admin y manager ven todos.
+    match /reports/{id} {
+      allow create: if hasProfile()
+                    && (
+                         // anónimo: no puede llevar identidad adjunta
+                         (request.resource.data.anonymous == true
+                          && request.resource.data.employeeId == null
+                          && request.resource.data.employeeName == null)
+                         // identificado: solo a su propio nombre
+                         || (request.resource.data.anonymous == false
+                             && request.resource.data.employeeId == myEmpKey())
+                       );
+      allow get, list: if isStaff()
+                       || (isAuth() && resource.data.employeeId == myEmpKey());
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ── ventas / promociones (datos de negocio) ──────────────────────────────
+    match /ventas/{id} {
+      allow read, write: if isStaff();
+    }
+    match /promociones/{id} {
+      allow read, write: if isStaff();
+    }
+
+    // ── config (incluye config/app_version del botón de actualizar) ──────────
+    match /config/{doc} {
+      allow read: if hasProfile();
+      allow write: if isAdmin();
+    }
+
+    // ── Denegar todo lo no contemplado explícitamente ────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

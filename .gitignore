@@ -11,12 +11,21 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+.audit/
+*-debug.log
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+
+# Informes temporales de auditoría: no deben versionarse
+audit-*.json
+eslint-report.json
 *.suo
 *.ntvs*
 *.njsproj

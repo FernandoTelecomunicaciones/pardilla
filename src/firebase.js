@@ -1,22 +1,17 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "your-api-key",
-  authDomain: "your-project.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "your-app-id"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
+window.firebase = firebase;
+export const emulatorMode = import.meta.env.VITE_USE_EMULATORS === 'true';
+export const firebaseConfig = emulatorMode
+  ? { apiKey: 'demo-key', projectId: 'demo-pardilla', authDomain: 'demo-pardilla.firebaseapp.com' }
+  : import.meta.env.VITE_FIREBASE_PROJECT_ID
+    ? { apiKey: import.meta.env.VITE_FIREBASE_API_KEY, projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID, authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN }
+    : null;
+export function connectEmulators(app) {
+  if (!emulatorMode) return;
+  if (!['localhost', '127.0.0.1'].includes(window.location.hostname)) throw new Error('Los emuladores solo se permiten en localhost.');
+  app.auth().useEmulator('http://127.0.0.1:9099');
+  app.firestore().useEmulator('127.0.0.1', 8080);
+}

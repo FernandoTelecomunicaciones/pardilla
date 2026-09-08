@@ -1,4 +1,15 @@
+import { csvCell, createRecord } from "./lib/records.js";
+import { firebaseConfig, connectEmulators } from "./firebase.js";
+import { signVacation } from "./lib/vacations.js";
 import { useState, useEffect, useRef, useCallback, Component } from "react";
+import {
+  parseLocalDate,
+  toLocalDateStr,
+  getMondayOfWeek,
+  isSummerPeriod,
+  getCurrentShift,
+  isNewerVersion,
+} from "./lib/core.js";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const styles = `
@@ -261,7 +272,27 @@ const APP_VERSION = "6.1";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
-const FIREBASE_CONFIG_HARDCODED = null;
+const FIREBASE_CONFIG_HARDCODED = firebaseConfig;
+
+// Config de Firebase desde variables de entorno de build (.env / CI).
+// La clave web de Firebase es pública por diseño (viaja en el bundle igualmente);
+// lo que protege los datos son las reglas de firestore.rules, no ocultar esta clave.
+// Permite distribuir la app ya configurada en vez de teclear la config en cada
+// dispositivo. Si no hay variables, se cae a localStorage / SetupScreen como antes.
+function getEnvFirebaseConfig() {
+  const env = import.meta.env || {};
+  const apiKey = env.VITE_FIREBASE_API_KEY;
+  const projectId = env.VITE_FIREBASE_PROJECT_ID;
+  if (!apiKey || !projectId) return null;
+  return {
+    apiKey,
+    projectId,
+    authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || `${projectId}.firebaseapp.com`,
+    storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "",
+    messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: env.VITE_FIREBASE_APP_ID || "",
+  };
+}
 
 const EMPLOYEES_INIT = [
   { id: 1, name: "María de los Ángeles", role: "Ayudante de Dependienta", vacationDays: 0, workedHolidays: 0, monthsWorked: 12, shiftType: "store" },
@@ -372,6 +403,15 @@ const HOLIDAYS_BY_YEAR = {
 };
 const getMadridHolidays = (year) => HOLIDAYS_BY_YEAR[year]?.madrid || [];
 const getSpainHolidays = (year) => HOLIDAYS_BY_YEAR[year]?.spain || [];
+// El calendario laboral se publica cada año en el BOE, así que la tabla de
+// arriba hay que ampliarla a mano. Si se agota, la acumulación de festivos
+// trabajados dejaría de contar SIN avisar (y eso son días de vacaciones del
+// equipo). Esta comprobación convierte ese fallo silencioso en un aviso visible.
+const hasHolidayData = (year) => Array.isArray(HOLIDAYS_BY_YEAR[year]?.madrid);
+const missingHolidayYears = () => {
+  const y = new Date().getFullYear();
+  return [y, y + 1].filter(year => !hasHolidayData(year));
+};
 
 // (v6.0) SEARCH_TRENDS eliminado: eran datos inventados sin uso. Sustituido por el módulo IA real.
 
@@ -462,29 +502,6 @@ function safeLocalSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.warn(`Error guardando en localStorage "${key}":`, e); }
 }
 
-// FIX #8: parseo de fechas YYYY-MM-DD a fecha LOCAL (evita bug UTC)
-function parseLocalDate(dateStr) {
-  if (!dateStr) return null;
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d, 12, 0, 0); // mediodía para evitar DST
-}
-function toLocalDateStr(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-// FIX #9: lunes de la semana correcto (también en domingo)
-function getMondayOfWeek(date) {
-  const d = new Date(date);
-  d.setHours(12, 0, 0, 0);
-  const day = d.getDay(); // 0=dom..6=sab
-  const diff = (day + 6) % 7; // distancia al lunes anterior
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
 function seededRandom(seed) {
   const x = Math.sin(seed * 9301 + 49297) * 49297;
   return x - Math.floor(x);
@@ -501,39 +518,6 @@ function getCompetitorPrices(product) {
     ...c,
     price: (product.price * (0.75 + seededRandom(product.id * 100 + i * 17) * 0.5)).toFixed(2),
   }));
-}
-
-function isSummerPeriod(date) {
-  const d = date instanceof Date ? date : parseLocalDate(date);
-  if (!d) return false;
-  const m = d.getMonth() + 1; // 1-12
-  return m >= 6 && m <= 8; // 1 jun – 31 ago
-}
-
-function getCurrentShift(employeeId, date, rotationConfig) {
-  const d = date instanceof Date ? date : parseLocalDate(date);
-  if (!d || !rotationConfig) return null;
-
-  // Temporada de verano: rotación semanal V1/V2 (igual que A/B/C pero módulo 2)
-  if (isSummerPeriod(d)) {
-    const sa = rotationConfig.summerAssignments?.[employeeId];
-    if (sa === undefined || sa === null) return null;
-    const refMonday = getMondayOfWeek(parseLocalDate(rotationConfig.referenceDate));
-    const currMonday = getMondayOfWeek(d);
-    const weeksDiff = Math.round((currMonday - refMonday) / (7 * 24 * 60 * 60 * 1000));
-    const shiftIndex = ((Number(sa) + weeksDiff) % 2 + 2) % 2;
-    return ["V1", "V2"][shiftIndex];
-  }
-
-  // Resto del año: rotación semanal A/B/C
-  if (!rotationConfig.assignments) return null;
-  const { referenceDate, assignments } = rotationConfig;
-  if (assignments[employeeId] === undefined) return null;
-  const refMonday = getMondayOfWeek(parseLocalDate(referenceDate));
-  const currMonday = getMondayOfWeek(d);
-  const weeksDiff = Math.round((currMonday - refMonday) / (7 * 24 * 60 * 60 * 1000));
-  const shiftIndex = ((assignments[employeeId] + weeksDiff) % 3 + 3) % 3;
-  return ["A", "B", "C"][shiftIndex];
 }
 
 function getShiftTemplate(shift, shiftTemplates) {
@@ -564,18 +548,6 @@ function generateDynamicContent(type) {
   }
 }
 
-// FIX #23: comparar versiones semver
-function isNewerVersion(remote, local) {
-  if (!remote || !local) return false;
-  const r = remote.split(".").map(n => parseInt(n) || 0);
-  const l = local.split(".").map(n => parseInt(n) || 0);
-  for (let i = 0; i < Math.max(r.length, l.length); i++) {
-    const a = r[i] || 0, b = l[i] || 0;
-    if (a > b) return true;
-    if (a < b) return false;
-  }
-  return false;
-}
 
 // FIX #6: Firebase facade con guarda
 const fb = () => {
@@ -651,11 +623,21 @@ function ConfirmModal({ title, message, confirmText = "Confirmar", cancelText = 
 // ─── MÓDULO IA (v6.0) ─────────────────────────────────────────────────────────
 // Integración real con la API de Claude (Anthropic) + modo local sin clave.
 // La clave API se guarda SOLO en este dispositivo (localStorage), nunca en Firestore.
+// Los IDs deben ir EXACTOS, sin sufijo de fecha: la API rechaza variantes como
+// "claude-haiku-4-5-20251001" (era el valor anterior y hacía fallar la opción
+// económica con un error de modelo inexistente).
 const AI_MODELS = [
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 — mejor calidad (recomendado)" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5 — más rápido y económico" },
+  { id: "claude-opus-5", label: "Claude Opus 5 — mejor calidad (recomendado)" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5 — equilibrado" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5 — más rápido y económico" },
 ];
-function getAIConfig() { return safeLocalGet("pardilla_ai_config", { apiKey: "", model: AI_MODELS[0].id }); }
+function getAIConfig() {
+  const cfg = safeLocalGet("pardilla_ai_config", { apiKey: "", model: AI_MODELS[0].id });
+  // Si el dispositivo tiene guardado un modelo retirado o mal escrito de una
+  // versión anterior, se cae al recomendado en vez de fallar en cada llamada.
+  if (!AI_MODELS.some(m => m.id === cfg.model)) return { ...cfg, model: AI_MODELS[0].id };
+  return cfg;
+}
 function saveAIConfig(cfg) { safeLocalSet("pardilla_ai_config", cfg); }
 const aiEnabled = () => !!getAIConfig().apiKey;
 
@@ -679,7 +661,8 @@ async function callClaude(system, user, maxTokens = 1500) {
   });
   if (!res.ok) {
     let msg = `Error de la API (${res.status})`;
-    try { const j = await res.json(); msg = j?.error?.message || msg; } catch {}
+    // Si el cuerpo del error no es JSON, nos quedamos con el mensaje genérico.
+    try { const j = await res.json(); msg = j?.error?.message || msg; } catch { /* respuesta no JSON */ }
     throw new Error(msg);
   }
   const data = await res.json();
@@ -841,7 +824,7 @@ function respuestaResenaLocal(texto) {
   return "¡Mil gracias por tomarte el tiempo de dejarnos esta reseña! 🥐 Nos alegra muchísimo que hayas disfrutado. Todo lo elaboramos de forma artesana cada mañana, y leer opiniones así es la mejor recompensa. ¡Te esperamos pronto con algo recién hecho! — Pastelería Pardilla";
 }
 
-function AsesorIAScreen({ products, userProfile, showNotification }) {
+function AsesorIAScreen({ products, showNotification }) {
   const [tab, setTab] = useState("asesor");
   const [ventas, setVentas] = useState([]);
   const [promociones, setPromociones] = useState([]);
@@ -979,8 +962,8 @@ Dame: 1) Diagnóstico en 4-5 frases directas. 2) Plan de los próximos 7 días: 
             ))}
           </div>
           <div className="form-group">
-            <label>Producto a destacar (opcional)</label>
-            <select className="input" value={productoSel} onChange={e => setProductoSel(e.target.value)}>
+            <label htmlFor="field-1">Producto a destacar (opcional)</label>
+            <select id="field-1" className="input" value={productoSel} onChange={e => setProductoSel(e.target.value)}>
               <option value="">— Que la IA elija según la temporada —</option>
               {[...products].sort((a, b) => a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.name}>{p.name} ({p.price.toFixed(2)}€)</option>)}
             </select>
@@ -997,12 +980,12 @@ Dame: 1) Diagnóstico en 4-5 frases directas. 2) Plan de los próximos 7 días: 
         <div style={{ marginTop: 16 }}>
           <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>Pega una reseña de Google y genera una respuesta profesional. Responder reseñas (sobre todo las malas) mejora tu posición en Google Maps y recupera clientes.</p>
           <div className="form-group">
-            <label>Reseña del cliente</label>
-            <textarea className="input" rows={4} style={{ resize: "vertical" }} placeholder="Pega aquí la reseña…" value={resena} onChange={e => setResena(e.target.value)} />
+            <label htmlFor="field-2">Reseña del cliente</label>
+            <textarea id="field-2" className="input" rows={4} style={{ resize: "vertical" }} placeholder="Pega aquí la reseña…" value={resena} onChange={e => setResena(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>Tono</label>
-            <select className="input" value={tono} onChange={e => setTono(e.target.value)}>
+            <label htmlFor="field-3">Tono</label>
+            <select id="field-3" className="input" value={tono} onChange={e => setTono(e.target.value)}>
               {["Cercano y agradecido", "Profesional y formal", "Con humor amable"].map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
@@ -1050,9 +1033,9 @@ Dame: 1) Diagnóstico en 4-5 frases directas. 2) Plan de los próximos 7 días: 
           <div className="card">
             <h4 style={{ marginBottom: 10 }}>Clave API de Anthropic (Claude)</h4>
             <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>Crea una clave en <strong>console.anthropic.com</strong> (pago por uso, céntimos por consulta) y pégala aquí. Con la clave puesta, toda la app usa IA real; sin ella funciona en modo local. La clave se guarda solo en este dispositivo.</p>
-            <div className="form-group"><label>Clave API</label><input type="password" className="input" placeholder="sk-ant-…" value={cfg.apiKey} onChange={e => setCfg(c => ({ ...c, apiKey: e.target.value.trim() }))} /></div>
-            <div className="form-group"><label>Modelo</label>
-              <select className="input" value={cfg.model} onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}>
+            <div className="form-group"><label htmlFor="field-4">Clave API</label><input id="field-4" type="password" className="input" placeholder="sk-ant-…" value={cfg.apiKey} onChange={e => setCfg(c => ({ ...c, apiKey: e.target.value.trim() }))} /></div>
+            <div className="form-group"><label htmlFor="field-5">Modelo</label>
+              <select id="field-5" className="input" value={cfg.model} onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}>
                 {AI_MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </div>
@@ -1091,9 +1074,9 @@ function SetupScreen({ onConfigSet }) {
         {!showConfig ? (
           <form onSubmit={handleSubmit}>
             {error && <div className="error-message">{error}</div>}
-            <div className="form-group"><label>API Key</label><input type="text" className="input" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Ej: AIzaSyD..." /></div>
-            <div className="form-group"><label>Project ID</label><input type="text" className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} placeholder="Ej: pasteleria-pardilla" /></div>
-            <div className="form-group"><label>Auth Domain</label><input type="text" className="input" value={authDomain} onChange={(e) => setAuthDomain(e.target.value)} placeholder="Ej: pasteleria-pardilla.firebaseapp.com" /></div>
+            <div className="form-group"><label htmlFor="field-6">API Key</label><input id="field-6" type="text" className="input" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Ej: AIzaSyD..." /></div>
+            <div className="form-group"><label htmlFor="field-7">Project ID</label><input id="field-7" type="text" className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} placeholder="Ej: pasteleria-pardilla" /></div>
+            <div className="form-group"><label htmlFor="field-8">Auth Domain</label><input id="field-8" type="text" className="input" value={authDomain} onChange={(e) => setAuthDomain(e.target.value)} placeholder="Ej: pasteleria-pardilla.firebaseapp.com" /></div>
             <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>Configurar Firebase</button>
           </form>
         ) : (
@@ -1114,51 +1097,36 @@ function SetupScreen({ onConfigSet }) {
 function LoginScreen({ onLoginSuccess }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [isFirstUser, setIsFirstUser] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => { checkIfFirstUser(); }, []);
-
-  const checkIfFirstUser = async () => {
+  const [notice, setNotice] = useState("");
+  const handleReset = async () => {
+    if (!email.trim()) { setError("Introduce tu email para recuperar la contraseña."); return; }
+    setSubmitting(true); setError(""); setNotice("");
     try {
-      const snapshot = await fb().firestore().collection("users").limit(1).get();
-      setIsFirstUser(snapshot.empty);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+      await fb().auth().sendPasswordResetEmail(email.trim());
+      setNotice("Si la cuenta existe, recibirás un correo para restablecer la contraseña.");
+    } catch { setError("No se pudo enviar la solicitud. Comprueba el email y la conexión."); }
+    finally { setSubmitting(false); }
   };
-
   const handleLogin = async (e) => {
     e.preventDefault(); setError(""); setSubmitting(true);
     try { const r = await fb().auth().signInWithEmailAndPassword(email, password); onLoginSuccess(r.user); }
-    catch (e) { setError(e.message); }
+    catch { setError("No se pudo iniciar sesión. Revisa tus datos y la conexión."); }
     setSubmitting(false);
   };
-
-  const handleCreateAdmin = async (e) => {
-    e.preventDefault(); setError(""); setSubmitting(true);
-    try {
-      const r = await fb().auth().createUserWithEmailAndPassword(email, password);
-      await fb().firestore().collection("users").doc(r.user.uid).set({ uid: r.user.uid, email, name, role: "admin", createdAt: new Date().toISOString() });
-      onLoginSuccess(r.user);
-    } catch (e) { setError(e.message); }
-    setSubmitting(false);
-  };
-
-  if (loading) return <div className="loading-spinner"><div className="spinner"></div><div className="loading-text">Cargando...</div></div>;
 
   return (
     <div className="login-screen">
       <div className="login-card">
         <div className="login-logo"><div className="icon">🥐</div><h2>Pastelería Pardilla v{APP_VERSION}</h2></div>
-        <form onSubmit={isFirstUser ? handleCreateAdmin : handleLogin}>
+        <form onSubmit={handleLogin}>
           {error && <div className="error-message">{error}</div>}
-          {isFirstUser && <div className="form-group"><label>Nombre</label><input type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" required /></div>}
-          <div className="form-group"><label>Email</label><input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ejemplo@correo.com" required autoComplete="email" /></div>
-          <div className="form-group"><label>Contraseña</label><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required autoComplete="current-password" minLength={6} /></div>
-          <button type="submit" className="btn btn-primary" style={{ width: "100%" }} disabled={submitting}>{submitting ? "Procesando..." : (isFirstUser ? "Crear Administrador" : "Iniciar Sesión")}</button>
+          <div className="form-group"><label htmlFor="field-9">Email</label><input id="field-9" type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ejemplo@correo.com" required autoComplete="email" /></div>
+          <div className="form-group"><label htmlFor="field-10">Contraseña</label><input id="field-10" type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required autoComplete="current-password" minLength={6} /></div>
+          <button type="submit" className="btn btn-primary" style={{ width: "100%" }} disabled={submitting}>{submitting ? "Procesando..." : "Iniciar Sesión"}</button>
+        <button type="button" className="btn btn-secondary" disabled={submitting} onClick={handleReset}>Recuperar contraseña</button>
+          {notice && <p role="status">{notice}</p>}
         </form>
         <p style={{ fontSize: 11, color: "#888", marginTop: 16, textAlign: "center" }}>
           Al usar esta app aceptas el tratamiento de tus datos según la política de privacidad de la empresa (RGPD). Los registros horarios y firmas se conservan 4 años conforme al RDL 8/2019.
@@ -1505,14 +1473,14 @@ function ManagementScreen({ onNavigate }) {
       {activeTab === "ventas" && (
         <div style={{ marginTop: "20px" }}>
           <h3>Registro de Ventas</h3>
-          <div className="form-group"><label>Fecha</label><input type="date" className="input" value={ventaForm.fecha} onChange={e => setVentaForm(f => ({...f, fecha: e.target.value}))} /></div>
+          <div className="form-group"><label htmlFor="field-11">Fecha</label><input id="field-11" type="date" className="input" value={ventaForm.fecha} onChange={e => setVentaForm(f => ({...f, fecha: e.target.value}))} /></div>
           <div className="form-group">
-            <label>Monto (€)</label>
-            <input type="number" className={`input ${montoError ? "error" : ""}`} step="0.01" min="0" placeholder="0.00" value={ventaForm.monto} onChange={e => setVentaForm(f => ({...f, monto: e.target.value}))} />
+            <label htmlFor="field-12">Monto (€)</label>
+            <input id="field-12" type="number" className={`input ${montoError ? "error" : ""}`} step="0.01" min="0" placeholder="0.00" value={ventaForm.monto} onChange={e => setVentaForm(f => ({...f, monto: e.target.value}))} />
             {montoError && <div className="form-error">{montoError}</div>}
           </div>
-          <div className="form-group"><label>Categoría</label>
-            <select className="input" value={ventaForm.categoria} onChange={e => setVentaForm(f => ({...f, categoria: e.target.value}))}>
+          <div className="form-group"><label htmlFor="field-13">Categoría</label>
+            <select id="field-13" className="input" value={ventaForm.categoria} onChange={e => setVentaForm(f => ({...f, categoria: e.target.value}))}>
               {["Bollería","Tartas","Cafetería","Sándwiches","Bebidas","Otros"].map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
@@ -1536,15 +1504,15 @@ function ManagementScreen({ onNavigate }) {
       {activeTab === "promociones" && (
         <div style={{ marginTop: "20px" }}>
           <h3>Gestor de Promociones</h3>
-          <div className="form-group"><label>Nombre de Promoción</label><input type="text" className="input" placeholder="Ej: Descuento Bollería" value={promoForm.nombre} onChange={e => setPromoForm(f => ({...f, nombre: e.target.value}))} /></div>
-          <div className="form-group"><label>Descuento (%)</label><input type="number" className="input" min="1" max="100" placeholder="10" value={promoForm.descuento} onChange={e => setPromoForm(f => ({...f, descuento: e.target.value}))} /></div>
-          <div className="form-group"><label>Categoría</label>
-            <select className="input" value={promoForm.categoria} onChange={e => setPromoForm(f => ({...f, categoria: e.target.value}))}>
+          <div className="form-group"><label htmlFor="field-14">Nombre de Promoción</label><input id="field-14" type="text" className="input" placeholder="Ej: Descuento Bollería" value={promoForm.nombre} onChange={e => setPromoForm(f => ({...f, nombre: e.target.value}))} /></div>
+          <div className="form-group"><label htmlFor="field-15">Descuento (%)</label><input id="field-15" type="number" className="input" min="1" max="100" placeholder="10" value={promoForm.descuento} onChange={e => setPromoForm(f => ({...f, descuento: e.target.value}))} /></div>
+          <div className="form-group"><label htmlFor="field-16">Categoría</label>
+            <select id="field-16" className="input" value={promoForm.categoria} onChange={e => setPromoForm(f => ({...f, categoria: e.target.value}))}>
               {["Bollería","Tartas","Cafetería","Todos los productos"].map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
-          <div className="form-group"><label>Fecha Inicio</label><input type="date" className="input" value={promoForm.inicio} onChange={e => setPromoForm(f => ({...f, inicio: e.target.value}))} /></div>
-          <div className="form-group"><label>Fecha Fin</label><input type="date" className="input" value={promoForm.fin} min={promoForm.inicio} onChange={e => setPromoForm(f => ({...f, fin: e.target.value}))} /></div>
+          <div className="form-group"><label htmlFor="field-17">Fecha Inicio</label><input id="field-17" type="date" className="input" value={promoForm.inicio} onChange={e => setPromoForm(f => ({...f, inicio: e.target.value}))} /></div>
+          <div className="form-group"><label htmlFor="field-18">Fecha Fin</label><input id="field-18" type="date" className="input" value={promoForm.fin} min={promoForm.inicio} onChange={e => setPromoForm(f => ({...f, fin: e.target.value}))} /></div>
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={addPromo}>Crear Promoción</button>
           <div style={{ marginTop: "20px" }}>
             <h4>Promociones Activas</h4>
@@ -1568,7 +1536,7 @@ function ManagementScreen({ onNavigate }) {
       {activeTab === "objetivos" && (
         <div style={{ marginTop: "20px" }}>
           <h3>Objetivos y KPIs</h3>
-          <div className="form-group"><label>Objetivo de Ventas Mensual (€)</label><input type="number" className="input" min="0" value={objetivos.monthlyTarget} onChange={e => setObjetivos(o => ({...o, monthlyTarget: parseInt(e.target.value) || 0}))} /></div>
+          <div className="form-group"><label htmlFor="field-19">Objetivo de Ventas Mensual (€)</label><input id="field-19" type="number" className="input" min="0" value={objetivos.monthlyTarget} onChange={e => setObjetivos(o => ({...o, monthlyTarget: parseInt(e.target.value) || 0}))} /></div>
           <button className="btn btn-success" style={{ width: "100%", marginBottom: "16px" }} onClick={saveObjetivos}>Guardar Objetivo</button>
           <div className="card" style={{ marginTop: "16px" }}>
             <h4>Progreso del Mes</h4>
@@ -1588,7 +1556,7 @@ function ManagementScreen({ onNavigate }) {
   );
 }
 
-function TasksScreen({ userProfile, employees }) {
+function TasksScreen({ userProfile, employees, showNotification }) {
   const isAdmin = userProfile.role === "admin" || userProfile.role === "manager";
   const [tasks, setTasks] = useState([]);
   const [activeTab, setActiveTab] = useState(isAdmin ? "all" : "assigned");
@@ -1597,10 +1565,19 @@ function TasksScreen({ userProfile, employees }) {
 
   useEffect(() => {
     if (!fbReady()) return;
-    const unsub = fb().firestore().collection("tasks").orderBy("createdAt", "desc")
-      .onSnapshot(snap => setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("tasks:", e));
-    return () => unsub();
-  }, []);
+    const collection = fb().firestore().collection("tasks");
+    const queries = isAdmin ? [collection] : [
+      collection.where("createdBy", "==", userProfile.uid),
+      collection.where("assignedTo", "in", ["all", String(userProfile.linkedEmployeeId || "unlinked")]),
+    ];
+    const results = queries.map(() => []);
+    const unsubscribers = queries.map((query, index) => query.onSnapshot(snap => {
+      results[index] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      setTasks([...new Map(results.flat().map(task => [task.id, task])).values()]
+        .sort((a,b) => (b.createdAt || "").localeCompare(a.createdAt || "")));
+    }, () => showNotification("No se pudieron cargar las tareas. Comprueba la conexión y tus permisos.", "error")));
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+  }, [isAdmin, userProfile.uid, userProfile.linkedEmployeeId, showNotification]);
 
   const addTask = async (data) => {
     await fb().firestore().collection("tasks").add({
@@ -1729,7 +1706,7 @@ function TasksScreen({ userProfile, employees }) {
   );
 }
 
-function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRotationConfig }) {
+function ShiftPlanningScreen({ employees, rotationConfig, setRotationConfig, showNotification }) {
   const [localRotation, setLocalRotation] = useState(rotationConfig);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1767,7 +1744,7 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
   const handleSave = async () => {
     setSaving(true);
     try { await fb().firestore().collection("shiftConfig").doc("rotation").set(localRotation); safeLocalSet("pardilla_rotation", localRotation); setSaved(true); setTimeout(() => setSaved(false), 3000); }
-    catch (e) { alert("Error al guardar: " + e.message); }
+    catch { showNotification("No se pudo guardar la rotación. Comprueba la conexión y tus permisos.", "error"); }
     setSaving(false);
   };
 
@@ -1929,8 +1906,8 @@ function ShiftPlanningScreen({ employees, shiftTemplates, rotationConfig, setRot
             <p style={{ fontSize: "13px", marginBottom: "8px" }}>Reemplazando a: <strong>{employees.find(e => e.id === replaceSlotId)?.name}</strong></p>
             <p style={{ fontSize: "12px", color: "#666", marginBottom: "16px" }}>El nuevo empleado continuará la rotación desde el mismo turno. Sus vacaciones y datos son independientes.</p>
             <div className="form-group">
-              <label>Nuevo empleado</label>
-              <select className="input" value={newEmpId} onChange={e => setNewEmpId(e.target.value)}>
+              <label htmlFor="field-20">Nuevo empleado</label>
+              <select id="field-20" className="input" value={newEmpId} onChange={e => setNewEmpId(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {employees.filter(e => e.shiftType === "store" && localRotation.assignments[e.id] === undefined).map(e => (
                   <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
@@ -2023,18 +2000,18 @@ function AssignVacationsScreen({ employees, vacationAssignments, addVacationAssi
       <h2>Asignar Vacaciones</h2>
       <div className="card" style={{ marginTop: "16px" }}>
         <h4 style={{ marginBottom: "16px" }}>Nueva Asignación</h4>
-        <div className="form-group"><label>Empleado</label>
-          <select className="input" value={selectedEmpId || ""} onChange={e => setSelectedEmpId(parseInt(e.target.value))}>
+        <div className="form-group"><label htmlFor="field-21">Empleado</label>
+          <select id="field-21" className="input" value={selectedEmpId || ""} onChange={e => setSelectedEmpId(parseInt(e.target.value))}>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
         {selectedEmp && <div style={{ background: "#E3F2FD", padding: 8, borderRadius: 6, fontSize: 12, marginBottom: 12 }}>Días disponibles: <strong>{availableDays.toFixed(1)}</strong></div>}
-        <div className="form-group"><label>Fecha inicio (opcional)</label><input type="date" className="input" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
-        <div className="form-group"><label>Fecha fin (opcional)</label><input type="date" className="input" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} /></div>
-        {(!startDate || !endDate) && <div className="form-group"><label>Número de días</label><input type="number" className="input" value={customDays} onChange={e => setCustomDays(e.target.value)} min="1" placeholder="Días de vacaciones" /></div>}
+        <div className="form-group"><label htmlFor="field-22">Fecha inicio (opcional)</label><input id="field-22" type="date" className="input" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+        <div className="form-group"><label htmlFor="field-23">Fecha fin (opcional)</label><input id="field-23" type="date" className="input" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} /></div>
+        {(!startDate || !endDate) && <div className="form-group"><label htmlFor="field-24">Número de días</label><input id="field-24" type="number" className="input" value={customDays} onChange={e => setCustomDays(e.target.value)} min="1" placeholder="Días de vacaciones" /></div>}
         {days > 0 && <div style={{ background: "#E8F5E9", padding: "12px", borderRadius: "8px", marginBottom: "16px", fontWeight: "600", color: "#2E7D32" }}>Días a asignar: {days}</div>}
         {warning && <div style={{ background: "#FFF3E0", color: "#E65100", padding: 10, borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{warning}</div>}
-        <div className="form-group"><label>Nota (opcional)</label><input type="text" className="input" value={note} onChange={e => setNote(e.target.value)} placeholder="Ej: Vacaciones verano" /></div>
+        <div className="form-group"><label htmlFor="field-25">Nota (opcional)</label><input id="field-25" type="text" className="input" value={note} onChange={e => setNote(e.target.value)} placeholder="Ej: Vacaciones verano" /></div>
         {saved && <div style={{ color: "#2E7D32", fontWeight: "600", marginBottom: "12px" }}>✓ Asignación creada — pendiente de firma del empleado</div>}
         <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleAssign} disabled={!selectedEmpId || days <= 0}>Asignar Vacaciones (Pendiente de firma)</button>
       </div>
@@ -2191,8 +2168,8 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
       <h2>Mi Horario</h2>
       {(userProfile.role === "admin" || userProfile.role === "manager") && (
         <div className="form-group" style={{ marginTop: "16px" }}>
-          <label>Empleado</label>
-          <select className="input" value={selectedEmpId} onChange={e => setSelectedEmpId(parseInt(e.target.value))}>
+          <label htmlFor="field-26">Empleado</label>
+          <select id="field-26" className="input" value={selectedEmpId} onChange={e => setSelectedEmpId(parseInt(e.target.value))}>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
@@ -2226,8 +2203,17 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
 // FIX #3, #5, #15, #31, #47, #48: fichaje robusto con histórico, validación pastry, hash, etc.
 function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, pastryTemplates, showNotification }) {
   const [registros, setRegistros] = useState([]);
-  const [loadingRegistros, setLoadingRegistros] = useState(true);
-  const [selectedDate] = useState(toLocalDateStr(new Date()));
+  const [loadingRegistros, setLoadingRegistros] = useState(userProfile.role !== "admin");
+  // La fecha se refresca sola: si la app se queda abierta y pasa la medianoche,
+  // el listener y el formulario tienen que apuntar ya al día nuevo.
+  const [selectedDate, setSelectedDate] = useState(toLocalDateStr(new Date()));
+  useEffect(() => {
+    const id = setInterval(() => {
+      const hoy = toLocalDateStr(new Date());
+      setSelectedDate(prev => (prev === hoy ? prev : hoy));
+    }, 60000);
+    return () => clearInterval(id);
+  }, []);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -2264,7 +2250,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
 
   // FIX #3: cargar registros del día actual al montar
   useEffect(() => {
-    if (isAdmin || !fbReady() || !userProfile.uid) { setLoadingRegistros(false); return; }
+    if (isAdmin || !fbReady() || !userProfile.uid) return;
     const unsub = fb().firestore().collection("registros_horarios")
       .where("userId", "==", userProfile.uid)
       .where("date", "==", selectedDate)
@@ -2277,6 +2263,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
 
   // Obtiene el slot efectivo según tipo de empleado y temporada
   const getEffectiveSlot = (emp, dateStr) => {
+    if (!emp) return null;
     const d = parseLocalDate(dateStr);
     if (!d) return null;
     const dayKey = DAY_KEYS[d.getDay()];
@@ -2360,7 +2347,9 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       const slot = getEffectiveSlot(linkedEmp, selectedDate);
       const candidates = getScheduledCandidates(pendingFicharType, slot);
       const scheduledTime = findClosestScheduled(time, candidates);
-      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: selectedDate, type: pendingFicharType, time, timestamp: now.toISOString(), ...(scheduledTime ? { scheduledTime, withinTolerance: true } : {}) };
+      // La fecha se toma del instante real del fichaje, no de cuando se abrió
+      // la pantalla: es un registro horario legal (RDL 8/2019).
+      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: toLocalDateStr(now), type: pendingFicharType, time, timestamp: now.toISOString(), ...(scheduledTime ? { scheduledTime, withinTolerance: true } : {}) };
       const integrityHash = await digestRecord({ ...base, signatureHashOf: "raw" });
       const registro = { ...base, signature, integrityHash };
       await fb().firestore().collection("registros_horarios").add(registro);
@@ -2381,7 +2370,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
       const linkedEmp = employees.find(e => e.id === userProfile.linkedEmployeeId);
       const employeeName = linkedEmp ? linkedEmp.name : userProfile.name;
       const textoDeclaracion = `El empleado/a ${employeeName} declara bajo su responsabilidad haber fichado ${pendingFicharType} a las ${fueraTurnoInfo.currentTime}h fuera del horario establecido. Turno asignado ${fueraTurnoInfo.shiftLetter}: ${fueraTurnoInfo.horarioPrevisto}. La empresa no tiene responsabilidad al respecto.`;
-      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: selectedDate, type: pendingFicharType, time: fueraTurnoInfo.currentTime, timestamp: now.toISOString(), fueraTolerancia: true, declaracionFueraTurno: textoDeclaracion };
+      const base = { userId: userProfile.uid, employeeId: linkedEmp?.id || null, employeeName, date: toLocalDateStr(now), type: pendingFicharType, time: fueraTurnoInfo.currentTime, timestamp: now.toISOString(), fueraTolerancia: true, declaracionFueraTurno: textoDeclaracion };
       const integrityHash = await digestRecord(base);
       const registro = { ...base, signature, integrityHash };
       await fb().firestore().collection("registros_horarios").add(registro);
@@ -2419,7 +2408,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
   // FIX #30: filename del CSV con rango real
   const downloadCSV = (records, fromDate, toDate) => {
     const header = "Fecha;Empleado;Tipo;Hora Real;Hora Turno;Dentro Tolerancia;Retroactivo;Decl. Responsabilidad;Con Firma;Hash Integridad;Timestamp\n";
-    const rows = records.map(r => `${r.date};${r.employeeName};${r.type};${r.time};${r.scheduledTime||""};${r.withinTolerance?"Sí":"No"};${r.retroactivo?"Sí":"No"};${r.declaracionResponsabilidad||r.declaracionFueraTurno?"Sí":"No"};${r.signature?"Sí":"No"};${r.integrityHash||""};${r.timestamp}`).join("\n");
+    const rows = records.map(r => [r.date,r.employeeName,r.type,r.time,r.scheduledTime||"",r.withinTolerance?"Sí":"No",r.retroactivo?"Sí":"No",r.declaracionResponsabilidad||r.declaracionFueraTurno?"Sí":"No",r.signature?"Sí":"No",r.integrityHash||"",r.timestamp].map(csvCell).join(";")).join("\n");
     const blob = new Blob(["﻿" + header + rows], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `registro_horario_${fromDate||"x"}_${toDate||"x"}.csv`; a.click();
@@ -2496,10 +2485,10 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
         <>
           <div className="card">
             <h3 style={{ marginBottom: "16px" }}>Registros Horarios</h3>
-            <div className="form-group"><label>Desde</label><input type="date" className="input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
-            <div className="form-group"><label>Hasta</label><input type="date" className="input" value={dateTo} min={dateFrom} onChange={e => setDateTo(e.target.value)} /></div>
-            <div className="form-group"><label>Empleado (opcional)</label>
-              <select className="input" value={selectedEmployee || ""} onChange={e => setSelectedEmployee(e.target.value || null)}>
+            <div className="form-group"><label htmlFor="field-27">Desde</label><input id="field-27" type="date" className="input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="field-28">Hasta</label><input id="field-28" type="date" className="input" value={dateTo} min={dateFrom} onChange={e => setDateTo(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="field-29">Empleado (opcional)</label>
+              <select id="field-29" className="input" value={selectedEmployee || ""} onChange={e => setSelectedEmployee(e.target.value || null)}>
                 <option value="">Todos</option>{employees.map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
               </select>
             </div>
@@ -2597,13 +2586,13 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
         <div className="modal">
           <div className="modal-content">
             <div className="modal-header"><span>📅 Fichaje Día Anterior</span><button className="modal-close" onClick={() => setShowRetroModal(false)}>×</button></div>
-            <div className="form-group"><label>Fecha del fichaje olvidado</label><input type="date" className="input" value={retroDate} min={retroMinDate} max={retroMaxDate} onChange={e => setRetroDate(e.target.value)} /></div>
-            <div className="form-group"><label>Tipo de fichaje</label>
-              <select className="input" value={retroType} onChange={e => setRetroType(e.target.value)}>
+            <div className="form-group"><label htmlFor="field-30">Fecha del fichaje olvidado</label><input id="field-30" type="date" className="input" value={retroDate} min={retroMinDate} max={retroMaxDate} onChange={e => setRetroDate(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="field-31">Tipo de fichaje</label>
+              <select id="field-31" className="input" value={retroType} onChange={e => setRetroType(e.target.value)}>
                 <option value="entrada">⬆️ Entrada</option><option value="salida">⬇️ Salida</option>
               </select>
             </div>
-            <div className="form-group"><label>Hora real del fichaje</label><input type="time" className="input" value={retroTime} onChange={e => setRetroTime(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="field-32">Hora real del fichaje</label><input id="field-32" type="time" className="input" value={retroTime} onChange={e => setRetroTime(e.target.value)} /></div>
             <div style={{ background: "#FFF3E0", border: "1px solid #FF9800", borderRadius: "8px", padding: "12px", marginBottom: "12px", fontSize: "12px", color: "#5D4037", lineHeight: "1.6" }}>
               <strong>Declaración de responsabilidad:</strong><br /><br />
               Yo, <em>{linkedEmpName}</em>, declaro bajo mi responsabilidad haber olvidado registrar el fichaje de <strong>{retroType}</strong> del día <strong>{retroDate || "..."}</strong> a las <strong>{retroTime || "..."}</strong> horas. Asumo que el olvido del fichaje fue por causa propia y que la empresa no tiene ninguna responsabilidad al respecto.
@@ -2626,8 +2615,8 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
         <div className="modal">
           <div className="modal-content">
             <div className="modal-header"><span>📜 Mi histórico de fichajes</span><button className="modal-close" onClick={() => setShowHistoryModal(false)}>×</button></div>
-            <div className="form-group"><label>Desde</label><input type="date" className="input" value={historyFrom} onChange={e => setHistoryFrom(e.target.value)} /></div>
-            <div className="form-group"><label>Hasta</label><input type="date" className="input" value={historyTo} min={historyFrom} onChange={e => setHistoryTo(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="field-33">Desde</label><input id="field-33" type="date" className="input" value={historyFrom} onChange={e => setHistoryFrom(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="field-34">Hasta</label><input id="field-34" type="date" className="input" value={historyTo} min={historyFrom} onChange={e => setHistoryTo(e.target.value)} /></div>
             <button className="btn btn-primary" style={{ width: "100%", marginBottom: 12 }} onClick={handleHistorySearch}>Buscar</button>
             {historyRegistros.length === 0 ? <p style={{ color: "#999", fontSize: 13 }}>No hay registros (busca para cargar)</p> : (
               <>
@@ -2660,7 +2649,7 @@ function FicharScreen({ userProfile, employees, shiftTemplates, rotationConfig, 
   );
 }
 
-function ShiftConfigScreen({ shiftTemplates, setShiftTemplates, pastryTemplates, setPastryTemplates, rotationConfig }) {
+function ShiftConfigScreen({ shiftTemplates, setShiftTemplates, pastryTemplates, setPastryTemplates, rotationConfig, showNotification }) {
   const [templates, setTemplates] = useState(shiftTemplates);
   const [pastry, setPastry] = useState(pastryTemplates);
   const [activePastryTab, setActivePastryTab] = useState("P1");
@@ -2697,7 +2686,7 @@ function ShiftConfigScreen({ shiftTemplates, setShiftTemplates, pastryTemplates,
       safeLocalSet("pardilla_shift_templates", templates);
       safeLocalSet("pardilla_pastry_templates", pastry);
       setSaved(true); setTimeout(() => setSaved(false), 3000);
-    } catch (e) { alert("Error al guardar: " + e.message); }
+    } catch { showNotification("No se pudieron guardar las plantillas. Comprueba la conexión y tus permisos.", "error"); }
     setSaving(false);
   };
 
@@ -2783,10 +2772,10 @@ function UserManagementScreen({ userProfile, employees }) {
     e.preventDefault(); setError(""); setSubmitting(true);
     let secondaryApp = null;
     try {
-      const cfgStr = localStorage.getItem("pardilla_firebase_config");
-      const cfg = cfgStr ? JSON.parse(cfgStr) : (typeof FIREBASE_CONFIG_HARDCODED === "object" && FIREBASE_CONFIG_HARDCODED);
+      const cfg = fb().app().options;
       if (!cfg) throw new Error("Sin configuración Firebase disponible");
       secondaryApp = fb().initializeApp(cfg, "Secondary" + Date.now());
+      connectEmulators(secondaryApp);
       const cred = await secondaryApp.auth().createUserWithEmailAndPassword(form.email, form.password);
       await fb().firestore().collection("users").doc(cred.user.uid).set({
         uid: cred.user.uid, email: form.email, name: form.name, role: form.role,
@@ -2815,17 +2804,17 @@ function UserManagementScreen({ userProfile, employees }) {
         <h3 style={{ marginBottom: "16px" }}>Crear Nuevo Usuario</h3>
         <form onSubmit={handleCreate}>
           {error && <div className="error-message">{error}</div>}
-          <div className="form-group"><label>Nombre</label><input type="text" className="input" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required /></div>
-          <div className="form-group"><label>Email</label><input type="email" className="input" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} required /></div>
-          <div className="form-group"><label>Contraseña</label><input type="password" className="input" value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required minLength={6} /></div>
-          <div className="form-group"><label>Rol</label>
-            <select className="input" value={form.role} onChange={e => setForm(f => ({...f, role: e.target.value}))}>
+          <div className="form-group"><label htmlFor="field-35">Nombre</label><input id="field-35" type="text" className="input" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required /></div>
+          <div className="form-group"><label htmlFor="field-36">Email</label><input id="field-36" type="email" className="input" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} required /></div>
+          <div className="form-group"><label htmlFor="field-37">Contraseña</label><input id="field-37" type="password" className="input" value={form.password} onChange={e => setForm(f => ({...f, password: e.target.value}))} required minLength={6} /></div>
+          <div className="form-group"><label htmlFor="field-38">Rol</label>
+            <select id="field-38" className="input" value={form.role} onChange={e => setForm(f => ({...f, role: e.target.value}))}>
               <option value="admin">Administrador</option><option value="manager">Gestor</option><option value="empleado">Empleado</option>
             </select>
           </div>
           {form.role === "empleado" && (
-            <div className="form-group"><label>¿Vincular a un empleado?</label>
-              <select className="input" value={form.linkedEmpId || ""} onChange={e => setForm(f => ({...f, linkedEmpId: e.target.value ? parseInt(e.target.value) : null}))}>
+            <div className="form-group"><label htmlFor="field-39">¿Vincular a un empleado?</label>
+              <select id="field-39" className="input" value={form.linkedEmpId || ""} onChange={e => setForm(f => ({...f, linkedEmpId: e.target.value ? parseInt(e.target.value) : null}))}>
                 <option value="">-- Ninguno --</option>{employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
               </select>
             </div>
@@ -2913,7 +2902,7 @@ service cloud.firestore {
 }
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
-function EmployeeDetailModal({ employee, onClose, employees, updateEmployee, removeEmployee }) {
+function EmployeeDetailModal({ employee, onClose, updateEmployee, removeEmployee }) {
   const [editName, setEditName] = useState(employee.name);
   const [editRole, setEditRole] = useState(employee.role);
   const [editVacationDays, setEditVacationDays] = useState(employee.vacationDays);
@@ -2948,17 +2937,17 @@ function EmployeeDetailModal({ employee, onClose, employees, updateEmployee, rem
         <div className="stat-box"><div className="label">Acumulado base</div><div className="value">{(employee.monthsWorked*2.5).toFixed(1)}</div></div>
         <div className="stat-box"><div className="label">Tipo Jornada</div><div className="value" style={{ fontSize: "13px" }}>{editShiftType === "pastry" ? `Pastry ${editPastryShift}` : "Tienda"}</div></div>
       </div>
-      <div className="form-group" style={{ marginTop: "20px" }}><label>Nombre</label><input type="text" className="input" value={editName} onChange={e => setEditName(e.target.value)} /></div>
-      <div className="form-group"><label>Rol</label><select className="input" value={editRole} onChange={e => setEditRole(e.target.value)}>{ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-      <div className="form-group"><label>Tipo de jornada</label>
-        <select className="input" value={editShiftType} onChange={e => setEditShiftType(e.target.value)}>
+      <div className="form-group" style={{ marginTop: "20px" }}><label htmlFor="field-40">Nombre</label><input id="field-40" type="text" className="input" value={editName} onChange={e => setEditName(e.target.value)} /></div>
+      <div className="form-group"><label htmlFor="field-41">Rol</label><select id="field-41" className="input" value={editRole} onChange={e => setEditRole(e.target.value)}>{ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+      <div className="form-group"><label htmlFor="field-42">Tipo de jornada</label>
+        <select id="field-42" className="input" value={editShiftType} onChange={e => setEditShiftType(e.target.value)}>
           <option value="store">Tienda (rotación A/B/C)</option>
           <option value="pastry">Obrador / Pastelería</option>
         </select>
       </div>
       {editShiftType === "pastry" && (
-        <div className="form-group"><label>Turno de pastelería</label>
-          <select className="input" value={editPastryShift} onChange={e => setEditPastryShift(e.target.value)}>
+        <div className="form-group"><label htmlFor="field-43">Turno de pastelería</label>
+          <select id="field-43" className="input" value={editPastryShift} onChange={e => setEditPastryShift(e.target.value)}>
             <option value="P1">P1 – Lunes libre, Martes 8-13</option>
             <option value="P2">P2 – Martes libre, Lunes 8-13</option>
             <option value="P3">P3 – Miércoles libre, Jueves 8-13</option>
@@ -3028,8 +3017,8 @@ function ProductDetailModal({ product, onClose, updateProduct }) {
         <h4 style={{ marginBottom: "12px" }}>Precios Competencia</h4>
         {competitors.map((c, idx) => <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: "13px" }}><span>{c.name}</span><span style={{ fontWeight: "600" }}>{c.price}€</span></div>)}
       </div>
-      <div className="form-group"><label>Editar Precio</label>
-        <input type="number" className={`input ${error ? "error" : ""}`} step="0.01" min="0" value={editPrice} onChange={e => { setEditPrice(e.target.value); setError(""); }} />
+      <div className="form-group"><label htmlFor="field-44">Editar Precio</label>
+        <input id="field-44" type="number" className={`input ${error ? "error" : ""}`} step="0.01" min="0" value={editPrice} onChange={e => { setEditPrice(e.target.value); setError(""); }} />
         {error && <div className="form-error">{error}</div>}
       </div>
       <div className="modal-footer"><button className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={handleSave}>Guardar</button></div>
@@ -3081,8 +3070,8 @@ function AddTaskModal({ onClose, onAdd, isAdmin, employees, defaultAssignedTo })
 
         {isAdmin && (
           <div className="form-group">
-            <label>Asignar a</label>
-            <select className="input" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+            <label htmlFor="field-45">Asignar a</label>
+            <select id="field-45" className="input" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
               <option value="self">Solo para mí (nota propia)</option>
               <option value="all">Todos los empleados</option>
               {(employees || []).map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
@@ -3091,12 +3080,12 @@ function AddTaskModal({ onClose, onAdd, isAdmin, employees, defaultAssignedTo })
         )}
 
         <div className="form-group">
-          <label>Título</label>
-          <input type="text" className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Revisar inventario" required autoFocus />
+          <label htmlFor="field-46">Título</label>
+          <input id="field-46" type="text" className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Revisar inventario" required autoFocus />
         </div>
         <div className="form-group">
-          <label>Descripción (opcional)</label>
-          <textarea className="input" value={body} onChange={e => setBody(e.target.value)} placeholder="Detalles..." style={{ minHeight:80 }} />
+          <label htmlFor="field-47">Descripción (opcional)</label>
+          <textarea id="field-47" className="input" value={body} onChange={e => setBody(e.target.value)} placeholder="Detalles..." style={{ minHeight:80 }} />
         </div>
 
         {type === "tarea" && (
@@ -3114,8 +3103,8 @@ function AddTaskModal({ onClose, onAdd, isAdmin, employees, defaultAssignedTo })
               </div>
             </div>
             <div className="form-group">
-              <label>Fecha de realización</label>
-              <input type="date" className="input" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+              <label htmlFor="field-48">Fecha de realización</label>
+              <input id="field-48" type="date" className="input" value={dueDate} onChange={e => setDueDate(e.target.value)} />
             </div>
             <div className="form-group">
               <label style={{ display:"flex", alignItems:"center", gap:8, fontWeight:"normal", cursor:"pointer" }}>
@@ -3150,17 +3139,16 @@ function AddProductModal({ onClose, addProduct }) {
     if (!name.trim()) { setError("El nombre es obligatorio"); return; }
     const p = parseFloat(price);
     if (!Number.isFinite(p) || p < 0) { setError("Introduce un precio válido"); return; }
-    await addProduct({ name: name.trim(), category, price: p });
-    onClose();
+    if (await addProduct({ name: name.trim(), category, price: p })) onClose();
   };
   return (
     <div className="modal"><div className="modal-content">
       <div className="modal-header"><span>Nuevo Producto</span><button className="modal-close" onClick={onClose}>×</button></div>
       <form onSubmit={handleSubmit}>
         {error && <div className="error-message">{error}</div>}
-        <div className="form-group"><label>Nombre</label><input type="text" className="input" value={name} onChange={e => setName(e.target.value)} required /></div>
-        <div className="form-group"><label>Categoría</label><select className="input" value={category} onChange={e => setCategory(e.target.value)}>{["Bollería","Tartas","Especialidades","Pasteles","Panadería","Salados","Cafetería"].map(c => <option key={c}>{c}</option>)}</select></div>
-        <div className="form-group"><label>Precio (€)</label><input type="number" className="input" step="0.01" min="0" value={price} onChange={e => setPrice(e.target.value)} required /></div>
+        <div className="form-group"><label htmlFor="field-49">Nombre</label><input id="field-49" type="text" className="input" value={name} onChange={e => setName(e.target.value)} required /></div>
+        <div className="form-group"><label htmlFor="field-50">Categoría</label><select id="field-50" className="input" value={category} onChange={e => setCategory(e.target.value)}>{["Bollería","Tartas","Especialidades","Pasteles","Panadería","Salados","Cafetería"].map(c => <option key={c}>{c}</option>)}</select></div>
+        <div className="form-group"><label htmlFor="field-51">Precio (€)</label><input id="field-51" type="number" className="input" step="0.01" min="0" value={price} onChange={e => setPrice(e.target.value)} required /></div>
         <div className="modal-footer"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm">Crear</button></div>
       </form>
     </div></div>
@@ -3180,26 +3168,26 @@ function AddEmployeeModal({ onClose, addEmployee }) {
     if (!name.trim()) { setError("Falta el nombre"); return; }
     const m = parseInt(monthsWorked);
     if (!Number.isFinite(m) || m < 0) { setError("Meses trabajados inválido"); return; }
-    await addEmployee({ name: name.trim(), role, monthsWorked: m, shiftType, vacationDays: 0, workedHolidays: 0, ...(shiftType === "pastry" ? { pastryShift } : {}) });
-    onClose();
+    const saved = await addEmployee({ name: name.trim(), role, monthsWorked: m, shiftType, vacationDays: 0, workedHolidays: 0, ...(shiftType === "pastry" ? { pastryShift } : {}) });
+    if (saved) onClose();
   };
   return (
     <div className="modal"><div className="modal-content">
       <div className="modal-header"><span>Nuevo Empleado</span><button className="modal-close" onClick={onClose}>×</button></div>
       <form onSubmit={handleSubmit}>
         {error && <div className="error-message">{error}</div>}
-        <div className="form-group"><label>Nombre</label><input type="text" className="input" value={name} onChange={e => setName(e.target.value)} required /></div>
-        <div className="form-group"><label>Rol</label><select className="input" value={role} onChange={e => setRole(e.target.value)}>{ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-        <div className="form-group"><label>Meses Trabajados</label><input type="number" className="input" min="0" value={monthsWorked} onChange={e => setMonthsWorked(e.target.value)} /></div>
-        <div className="form-group"><label>Tipo de jornada</label>
-          <select className="input" value={shiftType} onChange={e => setShiftType(e.target.value)}>
+        <div className="form-group"><label htmlFor="field-52">Nombre</label><input id="field-52" type="text" className="input" value={name} onChange={e => setName(e.target.value)} required /></div>
+        <div className="form-group"><label htmlFor="field-53">Rol</label><select id="field-53" className="input" value={role} onChange={e => setRole(e.target.value)}>{ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+        <div className="form-group"><label htmlFor="field-54">Meses Trabajados</label><input id="field-54" type="number" className="input" min="0" value={monthsWorked} onChange={e => setMonthsWorked(e.target.value)} /></div>
+        <div className="form-group"><label htmlFor="field-55">Tipo de jornada</label>
+          <select id="field-55" className="input" value={shiftType} onChange={e => setShiftType(e.target.value)}>
             <option value="store">Tienda (rotación A/B/C)</option>
             <option value="pastry">Obrador / Pastelería</option>
           </select>
         </div>
         {shiftType === "pastry" && (
-          <div className="form-group"><label>Turno de pastelería</label>
-            <select className="input" value={pastryShift} onChange={e => setPastryShift(e.target.value)}>
+          <div className="form-group"><label htmlFor="field-56">Turno de pastelería</label>
+            <select id="field-56" className="input" value={pastryShift} onChange={e => setPastryShift(e.target.value)}>
               <option value="P1">P1 – Lunes libre, Martes 8-13</option>
               <option value="P2">P2 – Martes libre, Lunes 8-13</option>
               <option value="P3">P3 – Miércoles libre, Jueves 8-13</option>
@@ -3213,7 +3201,7 @@ function AddEmployeeModal({ onClose, addEmployee }) {
 }
 
 // ─── SUGERENCIAS E INCIDENCIAS ───────────────────────────────────────────────
-function SugerenciasScreen({ userProfile, employees }) {
+function SugerenciasScreen({ userProfile, showNotification }) {
   const isAdmin = userProfile.role === "admin" || userProfile.role === "manager";
   const [reports, setReports] = useState([]);
   const [activeTab, setActiveTab] = useState(isAdmin ? "all" : "new");
@@ -3229,12 +3217,24 @@ function SugerenciasScreen({ userProfile, employees }) {
   const [filterStatus, setFilterStatus] = useState("");
   const fileRef = useRef(null);
 
+  // PRIVACIDAD: los reportes incluyen denuncias confidenciales y anónimas.
+  // Un empleado solo puede descargar los suyos; el filtro va en la CONSULTA, no
+  // en memoria (antes se bajaba la colección entera —con las fotos en base64— a
+  // todos los dispositivos y se filtraba en el cliente, así que cualquiera podía
+  // leer los confidenciales ajenos desde la consola del navegador).
+  const myReportKey = String(userProfile.linkedEmployeeId || "") || userProfile.uid;
   useEffect(() => {
     if (!fbReady()) return;
-    const unsub = fb().firestore().collection("reports").orderBy("createdAt", "desc")
-      .onSnapshot(snap => setReports(snap.docs.map(d => ({ id: d.id, ...d.data() }))), e => console.error("reports:", e));
+    const base = fb().firestore().collection("reports");
+    const query = isAdmin
+      ? base.orderBy("createdAt", "desc")
+      : base.where("employeeId", "==", myReportKey).orderBy("createdAt", "desc");
+    const unsub = query.onSnapshot(
+      snap => setReports(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      e => console.error("reports:", e)
+    );
     return () => unsub();
-  }, []);
+  }, [isAdmin, myReportKey]);
 
   const resetForm = () => {
     setCategory(""); setBody(""); setAnonymous(false); setPriority("media"); setPhoto(null);
@@ -3244,7 +3244,8 @@ function SugerenciasScreen({ userProfile, employees }) {
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 1.5 * 1024 * 1024) { alert("La foto no puede superar 1.5 MB"); return; }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { showNotification("Selecciona una imagen JPEG, PNG o WebP.", "warning"); return; }
+    if (file.size > 500 * 1024) { showNotification("La foto no puede superar 500 KB.", "warning"); return; }
     const reader = new FileReader();
     reader.onload = (ev) => setPhoto(ev.target.result);
     reader.readAsDataURL(file);
@@ -3253,7 +3254,7 @@ function SugerenciasScreen({ userProfile, employees }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!body.trim() && formType !== "incidencia") return;
-    if (formType === "incidencia" && !category) { alert("Selecciona el tipo de incidencia"); return; }
+    if (formType === "incidencia" && !category) { showNotification("Selecciona el tipo de incidencia", "warning"); return; }
     setSubmitting(true);
     const myEmpId = String(userProfile.linkedEmployeeId || "");
     const data = {
@@ -3273,7 +3274,7 @@ function SugerenciasScreen({ userProfile, employees }) {
       resetForm();
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 4000);
-    } catch (err) { alert("Error al enviar: " + err.message); }
+    } catch { showNotification("No se pudo enviar. Comprueba la conexión y vuelve a intentarlo.", "error"); }
     setSubmitting(false);
   };
 
@@ -3420,8 +3421,8 @@ function SugerenciasScreen({ userProfile, employees }) {
 
             {formType === "incidencia" && (
               <div className="form-group">
-                <label>Tipo de incidencia</label>
-                <select className="input" value={category} onChange={e => setCategory(e.target.value)} required>
+                <label htmlFor="field-57">Tipo de incidencia</label>
+                <select id="field-57" className="input" value={category} onChange={e => setCategory(e.target.value)} required>
                   <option value="">Selecciona...</option>
                   {INCIDENCIA_CATS.map(c => <option key={c}>{c}</option>)}
                 </select>
@@ -3448,8 +3449,8 @@ function SugerenciasScreen({ userProfile, employees }) {
 
             {(formType === "incidencia" || formType === "mejora") && (
               <div className="form-group">
-                <label>Foto adjunta (opcional, máx. 1.5 MB)</label>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange}
+                <label htmlFor="field-58">Foto adjunta (opcional, máx. 500 KB)</label>
+                <input id="field-58" ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange}
                   className="input" style={{ padding:"8px" }} />
                 {photo && (
                   <div style={{ marginTop:8, position:"relative" }}>
@@ -3518,8 +3519,8 @@ function AppInner() {
   const [userProfile, setUserProfile] = useState(null);
 
   // FIX #4, #37: empleados también sincronizados con Firestore
-  const [employees, setEmployees] = useState(() => safeLocalGet("pardilla_employees", EMPLOYEES_INIT));
-  const [products, setProducts] = useState(() => safeLocalGet("pardilla_products", PRODUCTS_INIT));
+  const [employees, setEmployees] = useState(() => []);
+  const [products, setProducts] = useState(() => []);
 
   // FIX #1, #2: shiftTemplates ES estado, persistido y cargado de Firestore
   const [shiftTemplates, setShiftTemplates] = useState(() => safeLocalGet("pardilla_shift_templates", SHIFT_TEMPLATES_DEFAULT));
@@ -3541,13 +3542,12 @@ function AppInner() {
   const [newVersion, setNewVersion] = useState(null);
   const [updateUrl, setUpdateUrl] = useState("");
   const [globalError, setGlobalError] = useState("");
+  const [profileError, setProfileError] = useState(null);
 
   const showNotification = useCallback((msg, type = "success") => {
     setNotification({ msg, type });
     setTimeout(() => setNotification({ msg: "", type: "" }), 3500);
   }, []);
-
-  useEffect(() => { initFirebase(); }, []);
 
   // FIX #20, #37: acumulación mensual y festivos solo se ejecutan UNA VEZ por sesión cuando hay user
   const accrualRanRef = useRef(false);
@@ -3652,13 +3652,6 @@ function AppInner() {
     if (!firebaseReady || !currentUser) return;
     const unsub = fb().firestore().collection("employees").orderBy("id")
       .onSnapshot(snap => {
-        if (snap.empty) {
-          // Si está vacía, sembramos desde EMPLOYEES_INIT solo si somos admin
-          if (userProfile?.role === "admin") {
-            EMPLOYEES_INIT.forEach(e => fb().firestore().collection("employees").doc(String(e.id)).set(e).catch(()=>{}));
-          }
-          return;
-        }
         const list = snap.docs.map(d => d.data());
         setEmployees(list); safeLocalSet("pardilla_employees", list);
       }, err => console.error("Employees sync:", err));
@@ -3670,12 +3663,6 @@ function AppInner() {
     if (!firebaseReady || !currentUser) return;
     const unsub = fb().firestore().collection("products").orderBy("id")
       .onSnapshot(snap => {
-        if (snap.empty) {
-          if (userProfile?.role === "admin") {
-            PRODUCTS_INIT.forEach(p => fb().firestore().collection("products").doc(String(p.id)).set(p).catch(()=>{}));
-          }
-          return;
-        }
         const list = snap.docs.map(d => d.data());
         setProducts(list); safeLocalSet("pardilla_products", list);
       }, err => console.error("Products sync:", err));
@@ -3704,11 +3691,8 @@ function AppInner() {
     } catch (e) { showNotification("Error: " + e.message, "error"); }
   };
   const addEmployee = async (data) => {
-    try {
-      const newId = Math.max(...employees.map(e => e.id), 0) + 1;
-      const ne = { id: newId, ...data };
-      await fb().firestore().collection("employees").doc(String(newId)).set(ne);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    try { await createRecord(fb().firestore(), "employees", data); return true; }
+    catch { showNotification("No se pudo guardar. Comprueba la conexión y vuelve a intentarlo.", "error"); return false; }
   };
   const updateEmployeeVacation = async (empId, delta) => {
     const emp = employees.find(e => e.id === empId);
@@ -3722,11 +3706,8 @@ function AppInner() {
     } catch (e) { showNotification("Error: " + e.message, "error"); }
   };
   const addProduct = async (data) => {
-    try {
-      const newId = Math.max(...products.map(p => p.id), 0) + 1;
-      const np = { id: newId, ...data };
-      await fb().firestore().collection("products").doc(String(newId)).set(np);
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    try { await createRecord(fb().firestore(), "products", data); return true; }
+    catch { showNotification("No se pudo guardar. Comprueba la conexión y vuelve a intentarlo.", "error"); return false; }
   };
   const addVacationAssignment = async (a) => {
     try { await fb().firestore().collection("vacationAssignments").doc(a.id).set(a); }
@@ -3737,17 +3718,11 @@ function AppInner() {
     catch (e) { showNotification("Error: " + e.message, "error"); }
   };
   const signVacationAssignment = async (a, signatureData) => {
-    try {
-      const integrityHash = await digestRecord({ id: a.id, employeeId: a.employeeId, days: a.days, signedAt: new Date().toISOString() });
-      await fb().firestore().collection("vacationAssignments").doc(a.id).update({
-        status: "signed", signatureData, signedAt: new Date().toISOString(), integrityHash
-      });
-      const emp = employees.find(e => e.id === a.employeeId);
-      if (emp) await updateEmployee({ ...emp, vacationDays: emp.vacationDays - a.days });
-    } catch (e) { showNotification("Error: " + e.message, "error"); }
+    try { await signVacation(fb().firestore(), a.id, signatureData); }
+    catch { showNotification("No se pudo firmar. Comprueba la conexión y vuelve a intentarlo.", "error"); }
   };
 
-  const checkForUpdates = (silent = false) => {
+  const checkForUpdates = useCallback((silent = false) => {
     if (!firebaseReady || !currentUser) return;
     fb().firestore().collection("config").doc("app_version").get()
       .then(doc => {
@@ -3755,12 +3730,12 @@ function AppInner() {
         const { version, apkUrl, webUrl } = doc.data();
         const v = version ? version.trim() : null;
         const dismissed = localStorage.getItem("pardilla_dismissed_version");
-        // FIX #23: comparar semver y limpiar dismissed obsoleto
+        // FIX #23: comparar semver y respetar la versión ya descartada
         if (v && isNewerVersion(v, APP_VERSION)) {
-          if (v === dismissed) return;
-          if (dismissed && !isNewerVersion(v, dismissed)) {
-            // Si la dismissed es más nueva o igual a la remota, ignorar
-          }
+          // Si el usuario ya descartó esta versión (o una posterior), no insistir.
+          // Antes esta condición existía pero su bloque estaba vacío, así que solo
+          // funcionaba cuando la versión coincidía exactamente.
+          if (silent && dismissed && !isNewerVersion(v, dismissed)) return;
           setNewVersion(v);
           const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
           setUpdateUrl(isIOS ? (webUrl || WEB_URL) : (apkUrl || `https://github.com/${GITHUB_REPO}/releases/latest`));
@@ -3769,51 +3744,79 @@ function AppInner() {
         }
       })
       .catch(console.error);
-  };
+  }, [firebaseReady, currentUser, showNotification]);
 
   useEffect(() => {
     if (firebaseReady && currentUser) checkForUpdates(true);
-  }, [firebaseReady, currentUser]);
+  }, [firebaseReady, currentUser, checkForUpdates]);
 
-  const initFirebase = () => {
-    let config = FIREBASE_CONFIG_HARDCODED;
+  const initFirebase = useCallback(() => {
+    // Prioridad: config compilada > variables de entorno > config guardada en el
+    // dispositivo. Solo si no hay ninguna se muestra la pantalla de configuración.
+    let config = FIREBASE_CONFIG_HARDCODED || getEnvFirebaseConfig();
     if (!config) {
       config = safeLocalGet("pardilla_firebase_config", null);
       if (!config) { setFirebaseReady(false); setAuthLoaded(true); return; }
     }
     if (!fbReady()) { setGlobalError("Firebase SDK no cargado. Verifica el script en index.html."); setAuthLoaded(true); return; }
     try {
-      if (!fb().apps.length) fb().initializeApp(config);
+      if (!fb().apps.length) { const app = fb().initializeApp(config); connectEmulators(app); }
       // Habilitar offline persistence (FIX #31)
-      try { fb().firestore().enablePersistence({ synchronizeTabs: true }).catch(()=>{}); } catch {}
-      fb().auth().onAuthStateChanged(async (user) => {
+      // Persistencia offline: si el navegador no la soporta (o hay varias
+      // pestañas sin sincronizar) la app sigue funcionando online.
+      let active = true;
+      const unsubscribe = fb().auth().onAuthStateChanged(async (user) => {
+        setAuthLoaded(false); setUserProfile(null);
+        setScreen("home"); setSelectedEmployee(null); setSelectedProduct(null); setModalOpen(null);
+        setEmployees([]); setProducts([]); setVacationAssignments([]);
         setCurrentUser(user);
         if (user) {
           try {
             const p = await fb().firestore().collection("users").doc(user.uid).get();
-            if (p.exists) setUserProfile({ uid: user.uid, ...p.data() });
-            else setUserProfile(null);
-          } catch (e) { console.error("loadProfile:", e); setUserProfile(null); }
-        } else { setUserProfile(null); }
+            if (!active || fb().auth().currentUser?.uid !== user.uid) return;
+            if (p.exists) { setUserProfile({ ...p.data(), uid: user.uid }); setProfileError(null); }
+            // Autenticado pero sin ficha en "users": ocurre si el admin le quitó
+            // el acceso (borra el doc, no la cuenta de Auth) o si la cuenta se
+            // creó desde la consola de Firebase. Antes se quedaba colgado en
+            // "Cargando perfil..." para siempre y sin botón de salir.
+            else { setUserProfile(null); setProfileError("sin-perfil"); }
+          } catch (e) {
+            console.error("loadProfile:", e);
+            setUserProfile(null);
+            setProfileError(e.message || "error");
+          }
+        } else { setUserProfile(null); setProfileError(null); }
         setAuthLoaded(true);
       });
       setFirebaseReady(true);
-    } catch (e) { console.error("Firebase init error:", e); setGlobalError(e.message); setAuthLoaded(true); }
-  };
+      return () => { active = false; unsubscribe(); };
+    } catch (e) { console.error("Firebase init error:", e); setGlobalError("No se pudo iniciar Firebase. Comprueba la configuración."); setAuthLoaded(true); }
+  }, []);
+
+  // Se declara initFirebase antes de usarlo en el efecto (evita el TDZ que
+  // señalaba react-hooks/immutability).
+  useEffect(() => initFirebase(), [initFirebase]);
 
   const handleConfigSet = (config) => { safeLocalSet("pardilla_firebase_config", config); initFirebase(); };
-  const handleLoginSuccess = async (user) => {
-    try {
-      const p = await fb().firestore().collection("users").doc(user.uid).get();
-      if (p.exists) setUserProfile({ uid: user.uid, ...p.data() });
-    } catch (e) { showNotification("Error cargando perfil: " + e.message, "error"); }
-  };
+  const handleLoginSuccess = () => {};
   const handleLogout = async () => { try { await fb().auth().signOut(); } catch (e) { console.error(e); } setCurrentUser(null); setUserProfile(null); setScreen("home"); };
 
   if (globalError) return <div className="login-screen"><div className="login-card"><h3>Error</h3><p style={{ marginTop: 12, fontSize: 13 }}>{globalError}</p></div></div>;
   if (!firebaseReady) return <SetupScreen onConfigSet={handleConfigSet} />;
   if (!authLoaded) return <div className="loading-spinner"><div className="spinner"></div><div className="loading-text">Iniciando...</div></div>;
   if (!currentUser) return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  if (!userProfile && profileError) return (
+    <div className="login-screen"><div className="login-card">
+      <div className="login-logo"><div className="icon">🥐</div><h2>Sin acceso</h2></div>
+      <p style={{ fontSize: 14, color: "#666", marginBottom: 16 }}>
+        {profileError === "sin-perfil"
+          ? "Tu cuenta existe pero no tiene permisos asignados en la aplicación. Pide al administrador que te dé de alta."
+          : "No hemos podido cargar tu perfil. Comprueba tu conexión e inténtalo de nuevo."}
+      </p>
+      <button className="btn btn-primary" style={{ width: "100%", marginBottom: 8 }} onClick={() => window.location.reload()}>Reintentar</button>
+      <button className="btn btn-secondary" style={{ width: "100%" }} onClick={handleLogout}>Cerrar sesión</button>
+    </div></div>
+  );
   if (!userProfile) return <div className="loading-spinner"><div className="spinner"></div><div className="loading-text">Cargando perfil...</div></div>;
 
   return (
@@ -3840,6 +3843,15 @@ function AppInner() {
               ✕
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Aviso al admin cuando falta el calendario laboral de algún año: sin él,
+          los festivos trabajados dejarían de sumarse a las vacaciones en silencio. */}
+      {userProfile.role === "admin" && missingHolidayYears().length > 0 && (
+        <div style={{ background: "#FFEBEE", borderBottom: "2px solid #F44336", padding: "10px 16px", fontSize: 14 }}>
+          ⚠️ Falta el calendario laboral de {missingHolidayYears().join(" y ")}. Hasta que se añada,
+          los festivos trabajados de {missingHolidayYears()[0]} <strong>no se sumarán</strong> a las vacaciones del equipo.
         </div>
       )}
 
@@ -3876,19 +3888,19 @@ function AppInner() {
       {screen === "employees" && <EmployeesScreen employees={employees} onOpenModal={setModalOpen} onSelectEmployee={setSelectedEmployee} />}
       {screen === "products" && <ProductsScreen products={products} onOpenModal={setModalOpen} onSelectProduct={setSelectedProduct} />}
       {screen === "management" && <ManagementScreen onNavigate={setScreen} />}
-      {screen === "ia" && (userProfile.role === "admin" || userProfile.role === "manager") && <AsesorIAScreen products={products} userProfile={userProfile} showNotification={showNotification} />}
-      {screen === "tasks" && <TasksScreen userProfile={userProfile} employees={employees} />}
-      {screen === "sugerencias" && <SugerenciasScreen userProfile={userProfile} employees={employees} />}
-      {screen === "schedule" && <ShiftPlanningScreen employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} setRotationConfig={setRotationConfig} />}
+      {screen === "ia" && (userProfile.role === "admin" || userProfile.role === "manager") && <AsesorIAScreen products={products} showNotification={showNotification} />}
+      {screen === "tasks" && <TasksScreen userProfile={userProfile} employees={employees} showNotification={showNotification} />}
+      {screen === "sugerencias" && <SugerenciasScreen userProfile={userProfile} showNotification={showNotification} />}
+      {screen === "schedule" && <ShiftPlanningScreen employees={employees} rotationConfig={rotationConfig} setRotationConfig={setRotationConfig} showNotification={showNotification} />}
       {screen === "vacation" && <VacationPlanningScreen employees={employees} updateEmployeeVacation={updateEmployeeVacation} userProfile={userProfile} vacationAssignments={vacationAssignments} signVacationAssignment={signVacationAssignment} />}
       {screen === "assignVacations" && <AssignVacationsScreen employees={employees} vacationAssignments={vacationAssignments} addVacationAssignment={addVacationAssignment} deleteVacationAssignment={deleteVacationAssignment} />}
       {screen === "miHorario" && <ConsultarHorarioScreen employees={employees} userProfile={userProfile} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} pastryTemplates={pastryTemplates} />}
       {screen === "fichar" && <FicharScreen userProfile={userProfile} employees={employees} shiftTemplates={shiftTemplates} rotationConfig={rotationConfig} pastryTemplates={pastryTemplates} showNotification={showNotification} />}
-      {screen === "shiftConfig" && <ShiftConfigScreen shiftTemplates={shiftTemplates} setShiftTemplates={setShiftTemplates} pastryTemplates={pastryTemplates} setPastryTemplates={setPastryTemplates} rotationConfig={rotationConfig} />}
+      {screen === "shiftConfig" && <ShiftConfigScreen shiftTemplates={shiftTemplates} setShiftTemplates={setShiftTemplates} pastryTemplates={pastryTemplates} setPastryTemplates={setPastryTemplates} rotationConfig={rotationConfig} showNotification={showNotification} />}
       {screen === "users" && <UserManagementScreen userProfile={userProfile} employees={employees} />}
       {screen === "firebase" && <FirebaseConfigScreen />}
 
-      {selectedEmployee && <EmployeeDetailModal employee={selectedEmployee} onClose={() => setSelectedEmployee(null)} updateEmployee={updateEmployee} removeEmployee={removeEmployee} employees={employees} />}
+      {selectedEmployee && <EmployeeDetailModal employee={selectedEmployee} onClose={() => setSelectedEmployee(null)} updateEmployee={updateEmployee} removeEmployee={removeEmployee} />}
       {selectedProduct && <ProductDetailModal product={selectedProduct} onClose={() => setSelectedProduct(null)} updateProduct={updateProduct} />}
       {modalOpen === "addProduct" && <AddProductModal onClose={() => setModalOpen(null)} addProduct={addProduct} />}
       {modalOpen === "addEmployee" && <AddEmployeeModal onClose={() => setModalOpen(null)} addEmployee={addEmployee} />}
