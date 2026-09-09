@@ -179,6 +179,58 @@ describe("getCurrentShift — rotación de verano V1/V2", () => {
   });
 });
 
+describe("getCurrentShift — modo 2 dependientes (Especial A/B)", () => {
+  // Víctor (2) y María de los Ángeles (1) cubren la tienda mientras falta el tercero.
+  const rotation = {
+    referenceDate: "2026-04-06",
+    assignments: { 1: 0, 2: 1, 4: 2 },
+    summerAssignments: { 1: 0, 2: 1 },
+    specialMode: true,
+    specialAssignments: { 1: 0, 2: 1 },
+  };
+
+  it("devuelve Especial A/B en lugar de A/B/C", () => {
+    expect(getCurrentShift(1, "2026-04-06", rotation)).toBe("EA");
+    expect(getCurrentShift(2, "2026-04-06", rotation)).toBe("EB");
+  });
+
+  it("alterna cada semana y vuelve al mismo a las dos semanas", () => {
+    expect(getCurrentShift(1, "2026-04-13", rotation)).toBe("EB");
+    expect(getCurrentShift(1, "2026-04-20", rotation)).toBe("EA");
+  });
+
+  it("los dos nunca coinciden en el mismo turno", () => {
+    for (const fecha of ["2026-04-06", "2026-04-13", "2026-04-20", "2026-03-30"]) {
+      expect(getCurrentShift(1, fecha, rotation)).not.toBe(getCurrentShift(2, fecha, rotation));
+    }
+  });
+
+  it("manda sobre el verano: en julio sigue siendo Especial, no V1/V2", () => {
+    expect(["EA", "EB"]).toContain(getCurrentShift(1, "2026-07-13", rotation));
+  });
+
+  it("quien no está asignado se queda sin turno de tienda (es el hueco a cubrir)", () => {
+    // El empleado 4 sí tiene turno en A/B/C, pero no en el modo especial.
+    expect(getCurrentShift(4, "2026-04-06", rotation)).toBeNull();
+  });
+
+  it("acepta el índice 0 como asignación válida", () => {
+    expect(getCurrentShift(1, "2026-04-06", rotation)).not.toBeNull();
+  });
+
+  it("al desactivarlo se vuelve a A/B/C sin tocar nada más", () => {
+    const normal = { ...rotation, specialMode: false };
+    expect(getCurrentShift(1, "2026-04-06", normal)).toBe("A");
+    expect(getCurrentShift(2, "2026-04-06", normal)).toBe("B");
+    expect(getCurrentShift(4, "2026-04-06", normal)).toBe("C");
+  });
+
+  it("una configuración antigua sin specialMode sigue funcionando igual", () => {
+    const antigua = { referenceDate: "2026-04-06", assignments: { 1: 0 }, summerAssignments: {} };
+    expect(getCurrentShift(1, "2026-04-06", antigua)).toBe("A");
+  });
+});
+
 // ── Comparación de versiones (botón de actualizar) ───────────────────────────
 describe("isNewerVersion", () => {
   it("detecta una versión remota más nueva", () => {

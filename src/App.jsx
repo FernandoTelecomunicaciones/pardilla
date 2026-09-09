@@ -210,6 +210,8 @@ const styles = `
   .turno-C { background: #FFF3E0; color: #E65100; }
   .turno-V1 { background: #FCE4EC; color: #880E4F; }
   .turno-V2 { background: #F3E5F5; color: #4A148C; }
+  .turno-EA { background: #E1F5FE; color: #01579B; }
+  .turno-EB { background: #E0F7FA; color: #006064; }
   .turno-P1 { background: #E0F2F1; color: #00695C; }
   .turno-P2 { background: #FFF8E1; color: #F57F17; }
   .turno-P3 { background: #E8EAF6; color: #283593; }
@@ -269,7 +271,7 @@ const styles = `
 `;
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const APP_VERSION = "6.3";
+const APP_VERSION = "6.4";
 const GITHUB_REPO = "FernandoTelecomunicaciones/pardilla";
 const WEB_URL = "https://pasteleria-pardilla.web.app";
 
@@ -456,8 +458,16 @@ const PASTRY_TEMPLATES_DEFAULT = {
 const SHIFT_TEMPLATE_PASTRY_DEFAULT = PASTRY_TEMPLATES_DEFAULT.P1;
 
 // Turnos de verano (1 jun – 31 ago): solo 2 turnos fijos, sin rotación semanal
-const SHIFT_TEMPLATES_SUMMER = {
-  V1: { // Lunes y Martes trabaja, Mié y Jue libre
+// ─── Cuadrante de DOS dependientes ───────────────────────────────────────────
+// Se usa siempre que la tienda se cubre entre dos personas en lugar de tres:
+//   · en verano (1 jun – 31 ago), automáticamente, por las vacaciones → V1/V2
+//   · el resto del año, activando el "modo 2 dependientes" (baja, vacante...)
+//     → Especial A / Especial B
+// Es la MISMA situación, así que es el MISMO cuadrante y se define una sola vez:
+// duplicarlo dejaría las dos versiones descuadradas en cuanto se retoque una hora.
+// Ambos turnos suman exactamente 40 h semanales.
+const SHIFT_TEMPLATES_2P = {
+  T1: { // Lunes y Martes trabaja, Mié y Jue libre
     L: { m1:"09:30", m2:"14:00", t1:"17:30", t2:"20:50" },
     M: { m1:"09:30", m2:"14:00", t1:"17:30", t2:"20:50" },
     X: null,
@@ -466,7 +476,7 @@ const SHIFT_TEMPLATES_SUMMER = {
     S: { m1:"09:00", m2:"14:30", t1:"17:00", t2:"20:50" },
     D: { m1:"09:00", m2:"14:30", t1:"17:20", t2:"20:50" },
   },
-  V2: { // Lunes y Martes libre, Mié y Jue trabaja
+  T2: { // Lunes y Martes libre, Mié y Jue trabaja
     L: null,
     M: null,
     X: { m1:"09:30", m2:"14:00", t1:"17:30", t2:"20:50" },
@@ -477,7 +487,20 @@ const SHIFT_TEMPLATES_SUMMER = {
   },
 };
 
-const ROTATION_DEFAULT = { referenceDate: "2026-04-06", assignments: { 1: 0, 2: 1, 4: 2 }, summerAssignments: {} };
+// Los dos nombres con los que aparece ese cuadrante según por qué está activo.
+// Apuntan al mismo objeto a propósito: una sola fuente de verdad.
+const SHIFT_TEMPLATES_SUMMER = { V1: SHIFT_TEMPLATES_2P.T1, V2: SHIFT_TEMPLATES_2P.T2 };
+const SHIFT_TEMPLATES_SPECIAL = { EA: SHIFT_TEMPLATES_2P.T1, EB: SHIFT_TEMPLATES_2P.T2 };
+
+const ROTATION_DEFAULT = {
+  referenceDate: "2026-04-06",
+  assignments: { 1: 0, 2: 1, 4: 2 },
+  summerAssignments: {},
+  // Modo 2 dependientes: apagado por defecto. Se enciende desde Turnos cuando
+  // falta alguien y se apaga al recuperar el tercer dependiente.
+  specialMode: false,
+  specialAssignments: {},
+};
 
 // FIX #21: typos corregidos
 const TRENDING_HOOKS = ["Abiertos Domingos","Ofertas Semanales","Tartas Personalizadas","Productos Ecológicos","Sin Gluten Disponibles","Venta Online","Catering Empresas","Clases de Repostería","Sostenibilidad","Recetas Caseras"];
@@ -523,6 +546,7 @@ function getCompetitorPrices(product) {
 
 function getShiftTemplate(shift, shiftTemplates) {
   if (shift === "V1" || shift === "V2") return SHIFT_TEMPLATES_SUMMER[shift];
+  if (shift === "EA" || shift === "EB") return SHIFT_TEMPLATES_SPECIAL[shift];
   return shiftTemplates?.[shift] || null;
 }
 
@@ -1758,6 +1782,35 @@ function ShiftPlanningScreen({ employees, rotationConfig, setRotationConfig, sho
     catch (e) { console.error("rotation save:", e); }
   };
 
+  // Propuesta al activar el modo 2 dependientes: los dos habituales (Víctor y
+  // María de los Ángeles). Si no están, se cogen los dos primeros de tienda.
+  // Es solo una propuesta: se puede cambiar quién entra en cualquier momento.
+  const proponerDuo = () => {
+    const tienda = employees.filter(e => e.shiftType === "store");
+    const preferidos = ["víctor", "maría de los ángeles"];
+    const elegidos = preferidos
+      .map(p => tienda.find(e => e.name.toLowerCase().startsWith(p)))
+      .filter(Boolean);
+    for (const e of tienda) {
+      if (elegidos.length >= 2) break;
+      if (!elegidos.some(x => x.id === e.id)) elegidos.push(e);
+    }
+    return Object.fromEntries(elegidos.slice(0, 2).map((e, i) => [e.id, i]));
+  };
+
+  // El cuadrante especial solo cubre la tienda si hay exactamente dos personas,
+  // una en cada turno. Avisar es mejor que dejar un domingo sin nadie.
+  const avisoDuo = (() => {
+    if (!localRotation.specialMode) return null;
+    const asignados = Object.values(localRotation.specialAssignments || {});
+    if (asignados.length === 0) return "No has asignado a nadie: nadie tiene turno de tienda.";
+    if (asignados.length === 1) return "Solo hay un dependiente asignado: habrá días sin cubrir.";
+    if (asignados.length > 2) return `Hay ${asignados.length} dependientes asignados. Este cuadrante está pensado para dos: repasa que no sobre nadie.`;
+    const bases = asignados.map(Number).sort();
+    if (bases[0] === bases[1]) return "Los dos empiezan en el mismo turno, así que coincidirán siempre y habrá días sin cubrir. Pon uno en A y otro en B.";
+    return null;
+  })();
+
   const handleShiftChange = (empId, desiredShiftIdx) => {
     const weeksDiff = getWeeksDiff(localRotation);
     const newAssignment = ((parseInt(desiredShiftIdx) - weeksDiff) % 3 + 3) % 3;
@@ -1877,6 +1930,86 @@ function ShiftPlanningScreen({ employees, rotationConfig, setRotationConfig, sho
             <button className="btn btn-success btn-sm" onClick={handleAddToRotation} disabled={!addEmpId} style={{ height: "44px" }}>Añadir</button>
           </div>
         </div>
+      </div>
+
+      {/* ─── Modo 2 dependientes (baja, vacante...) ─── */}
+      <div style={{ marginTop: "28px" }}>
+        <h3 style={{ marginBottom: "4px" }}>Modo 2 dependientes <span style={{ fontSize: 12, background: "#E1F5FE", color: "#01579B", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>Especial A / B</span></h3>
+        <p style={{ fontSize: "12px", color: "#666", marginBottom: "12px" }}>
+          Para cuando la tienda se queda con dos dependientes (una baja, una vacante...). Sustituye la
+          rotación A/B/C por dos turnos que se alternan cada semana. Es el mismo cuadrante que se usa
+          en verano, porque es la misma situación. Al desactivarlo se vuelve solo a A/B/C.
+        </p>
+
+        <div className="card" style={{ marginBottom: 12, background: localRotation.specialMode ? "#E1F5FE" : "var(--card-bg)", borderLeft: `4px solid ${localRotation.specialMode ? "#0288D1" : "var(--border)"}` }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={!!localRotation.specialMode}
+              onChange={e => {
+                const activar = e.target.checked;
+                // Al activarlo por primera vez se proponen los dos dependientes
+                // habituales, pero se pueden cambiar abajo en cualquier momento.
+                const yaHay = Object.keys(localRotation.specialAssignments || {}).length > 0;
+                const propuesta = yaHay ? localRotation.specialAssignments : proponerDuo();
+                persistRotation({ ...localRotation, specialMode: activar, specialAssignments: propuesta });
+              }}
+              style={{ width: 18, height: 18 }}
+            />
+            {localRotation.specialMode ? "Activado: la tienda funciona con 2 dependientes" : "Activar cuando falte un dependiente"}
+          </label>
+          {localRotation.specialMode && (
+            <p style={{ fontSize: 12, color: "#01579B", marginTop: 8, marginBottom: 0 }}>
+              Mientras esté activo, los turnos A/B/C y los de verano quedan en pausa. Quien no aparezca
+              asignado aquí no tendrá turno de tienda.
+            </p>
+          )}
+        </div>
+
+        {localRotation.specialMode && employees.filter(e => e.shiftType === "store").map(emp => {
+          const baseIdx = localRotation.specialAssignments?.[emp.id];
+          const hasBase = baseIdx !== undefined && baseIdx !== null && baseIdx !== "";
+          const currentShift = hasBase ? getCurrentShift(emp.id, today, localRotation) : null;
+          return (
+            <div key={emp.id} className="card" style={{ marginBottom: "8px", borderLeft: "4px solid #0288D1", padding: "12px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <span style={{ fontWeight: 600 }}>{emp.name}</span>
+                  {currentShift && <span style={{ fontSize: 11, color: "#888", marginLeft: 8 }}>Esta semana: <strong>{currentShift === "EA" ? "Especial A" : "Especial B"}</strong></span>}
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <select className="input" value={hasBase ? String(baseIdx) : ""} onChange={e => {
+                    const val = e.target.value;
+                    const nuevas = { ...(localRotation.specialAssignments || {}) };
+                    if (val !== "") nuevas[emp.id] = Number(val); else delete nuevas[emp.id];
+                    persistRotation({ ...localRotation, specialAssignments: nuevas });
+                  }} style={{ width: "190px", marginBottom: 0 }}>
+                    <option value="">No entra en el modo especial</option>
+                    <option value="0">Base Especial A (esta semana A)</option>
+                    <option value="1">Base Especial B (esta semana B)</option>
+                  </select>
+                  {currentShift && <div className={`turno-badge turno-${currentShift}`}>{currentShift === "EA" ? "EA" : "EB"}</div>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {localRotation.specialMode && (
+          <>
+            {avisoDuo && (
+              <div className="card" style={{ background: "#FFF3E0", border: "1px solid #FF9800", marginTop: 10 }}>
+                <p style={{ fontSize: 12, color: "#E65100", margin: 0 }}>⚠️ {avisoDuo}</p>
+              </div>
+            )}
+            <div className="card" style={{ marginTop: 10, background: "#E1F5FE", border: "1px solid #81D4FA" }}>
+              <p style={{ fontSize: 12, color: "#01579B", margin: 0 }}><strong>Resumen horarios especiales (40 h cada uno):</strong><br/>
+                <strong>Especial A:</strong> L/M 9:30-14 y 17:30-20:50 · X/J libre · V 10:30-14 y 17:30-20 · S 9-14:30 y 17-20:50 · D 9-14:30 y 17:20-20:50<br/>
+                <strong>Especial B:</strong> L/M libre · X/J 9:30-14 y 17:30-20:50 · V 9:30-13 y 18-20:50 · S 9-14:30 y 17:20-20:50 · D 9-14:10 y 17-20:50
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ─── Asignación Verano ─── */}
@@ -2184,7 +2317,8 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
   const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d); };
   const nextWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d); };
   const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
-  const badgeClass = ["V1","V2"].includes(shiftLabel) ? `turno-${shiftLabel}` : ["P1","P2","P3"].includes(shiftLabel) ? `turno-${shiftLabel}` : `turno-${shiftLabel}`;
+  const badgeClass = `turno-${shiftLabel}`;
+  const esEspecial = shiftLabel === "EA" || shiftLabel === "EB";
 
   return (
     <div className="container">
@@ -2201,8 +2335,11 @@ function ConsultarHorarioScreen({ employees, userProfile, shiftTemplates, rotati
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
           <h3>{emp.name}</h3>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-            {summer && <span className="summer-badge">☀️ Verano</span>}
-            <div className={`turno-badge ${badgeClass}`}>{shiftLabel}</div>
+            {/* En modo especial el turno no es el de verano aunque estemos en
+                julio, así que el distintivo de verano no debe confundir. */}
+            {summer && !esEspecial && <span className="summer-badge">☀️ Verano</span>}
+            {esEspecial && <span style={{ display: "inline-block", background: "#0288D1", color: "white", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>2 dependientes</span>}
+            <div className={`turno-badge ${badgeClass}`}>{esEspecial ? (shiftLabel === "EA" ? "Especial A" : "Especial B") : shiftLabel}</div>
           </div>
         </div>
       </div>

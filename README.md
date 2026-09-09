@@ -175,7 +175,7 @@ Y el aviso de actualización se dispara al escribir en Firestore, así que ese p
 va el último: si se hace antes, el botón "Actualizar ahora" lleva a algo que
 todavía no existe.
 
-1. **Subir la versión** en `src/App.jsx` → `const APP_VERSION = "6.3";`
+1. **Subir la versión** en `src/App.jsx` → `const APP_VERSION = "6.4";`
 2. **Comprobaciones** (los tests de reglas necesitan el JDK 21, ver arriba)
    ```bash
    npm ci
@@ -198,12 +198,12 @@ todavía no existe.
    npx cap sync android
    # generar el APK firmado desde Android Studio
    ```
-6. **Release en GitHub** con etiqueta `v6.3` y el APK como adjunto, para que
+6. **Release en GitHub** con etiqueta `v6.4` y el APK como adjunto, para que
    `releases/latest` apunte a un archivo real.
 7. **Último paso — activar el aviso**: en Firestore, documento
    `config/app_version`:
    ```json
-   { "version": "6.3", "apkUrl": "<url del APK>", "webUrl": "https://pasteleria-pardilla.web.app" }
+   { "version": "6.4", "apkUrl": "<url del APK>", "webUrl": "https://pasteleria-pardilla.web.app" }
    ```
 
 ---
@@ -220,6 +220,38 @@ todavía no existe.
 
 Los datos de Firestore **no** se revierten con el código: si un despliegue
 escribiera datos incorrectos, hay que restaurarlos desde una exportación.
+
+---
+
+## Turnos de tienda: los tres modos
+
+La tienda se cubre de una de estas tres formas, y la app elige sola cuál aplica:
+
+| Modo | Cuándo | Turnos | Rota |
+|---|---|---|---|
+| **Normal** | 3 dependientes | A / B / C | cada semana, mód. 3 |
+| **Verano** | 1 jun – 31 ago, automático | V1 / V2 | cada semana, mód. 2 |
+| **2 dependientes** | manual: baja, vacante… | Especial A / B | cada semana, mód. 2 |
+
+**Verano y 2 dependientes usan el mismo cuadrante** (`SHIFT_TEMPLATES_2P` en
+`src/App.jsx`), porque son la misma situación: la tienda cubierta entre dos. Está
+definido **una sola vez** y los dos nombres apuntan a él — si algún día retocas
+una hora, no se descuadran entre sí. Ambos turnos suman exactamente 40 h.
+
+### Activar el modo 2 dependientes
+
+**Turnos → Modo 2 dependientes → marcar la casilla.** Al activarlo propone a
+Víctor y María de los Ángeles, pero puedes cambiar quién entra y en qué turno
+empieza cada uno. Mientras esté activo:
+
+- Sustituye a A/B/C **y también al automatismo de verano**, porque lo enciendes tú
+  a propósito. En julio con el modo activo se sigue viendo "Especial", no "V1".
+- Quien no esté asignado se queda sin turno de tienda: es justo el hueco a cubrir.
+- La app avisa si no hay exactamente dos personas, o si las dos empiezan en el
+  mismo turno (coincidirían siempre y quedarían días descubiertos).
+
+Al contratar al tercer dependiente, **desmarca la casilla** y vuelve A/B/C sin
+tocar nada más: las asignaciones normales siguen guardadas.
 
 ---
 

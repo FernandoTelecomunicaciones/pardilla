@@ -39,30 +39,42 @@ export function isSummerPeriod(date) {
   return m >= 6 && m <= 8;
 }
 
+// Rotación semanal genérica: cuántas semanas han pasado desde la referencia.
+function semanasDesde(referenceDate, d) {
+  const refMonday = getMondayOfWeek(parseLocalDate(referenceDate));
+  const currMonday = getMondayOfWeek(d);
+  return Math.round((currMonday - refMonday) / (7 * 24 * 60 * 60 * 1000));
+}
+
 export function getCurrentShift(employeeId, date, rotationConfig) {
   const d = date instanceof Date ? date : parseLocalDate(date);
   if (!d || !rotationConfig) return null;
+
+  // Modo 2 dependientes (baja, vacante...): rotación semanal Especial A / B.
+  // Manda sobre todo lo demás, incluido el verano, porque lo activa el dueño a
+  // propósito cuando falta gente. Quien no esté asignado no tiene turno de
+  // tienda: es justo el hueco que hay que cubrir.
+  if (rotationConfig.specialMode) {
+    const ea = rotationConfig.specialAssignments?.[employeeId];
+    if (ea === undefined || ea === null) return null;
+    const idx = ((Number(ea) + semanasDesde(rotationConfig.referenceDate, d)) % 2 + 2) % 2;
+    return ["EA", "EB"][idx];
+  }
 
   // Temporada de verano: rotación semanal V1/V2 (igual que A/B/C pero módulo 2)
   if (isSummerPeriod(d)) {
     const sa = rotationConfig.summerAssignments?.[employeeId];
     if (sa === undefined || sa === null) return null;
-    const refMonday = getMondayOfWeek(parseLocalDate(rotationConfig.referenceDate));
-    const currMonday = getMondayOfWeek(d);
-    const weeksDiff = Math.round((currMonday - refMonday) / (7 * 24 * 60 * 60 * 1000));
-    const shiftIndex = ((Number(sa) + weeksDiff) % 2 + 2) % 2;
-    return ["V1", "V2"][shiftIndex];
+    const idx = ((Number(sa) + semanasDesde(rotationConfig.referenceDate, d)) % 2 + 2) % 2;
+    return ["V1", "V2"][idx];
   }
 
   // Resto del año: rotación semanal A/B/C
   if (!rotationConfig.assignments) return null;
-  const { referenceDate, assignments } = rotationConfig;
-  if (assignments[employeeId] === undefined) return null;
-  const refMonday = getMondayOfWeek(parseLocalDate(referenceDate));
-  const currMonday = getMondayOfWeek(d);
-  const weeksDiff = Math.round((currMonday - refMonday) / (7 * 24 * 60 * 60 * 1000));
-  const shiftIndex = ((assignments[employeeId] + weeksDiff) % 3 + 3) % 3;
-  return ["A", "B", "C"][shiftIndex];
+  const base = rotationConfig.assignments[employeeId];
+  if (base === undefined) return null;
+  const idx = ((base + semanasDesde(rotationConfig.referenceDate, d)) % 3 + 3) % 3;
+  return ["A", "B", "C"][idx];
 }
 
 // FIX #23: comparar versiones semver ("6.10" es más nueva que "6.9")
